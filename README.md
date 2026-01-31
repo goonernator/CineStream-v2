@@ -47,8 +47,6 @@ A modern Netflix-style desktop streaming application built with Electron and Nex
 
 </div>
 
-> **Note:** Add your screenshots to the `screenshots/` directory. Replace the placeholder paths above with your actual screenshot files.
-
 ## 🚀 Installation
 
 ### Prerequisites
