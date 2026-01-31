@@ -114,7 +114,7 @@ Special thanks to **[barcodebimbo](https://github.com/barcodebimbo)** for:
 
 This project also uses:
 - **[TMDB](https://www.themoviedb.org/)** - Movie and TV metadata
-- **[Sanction](https://sanction.tv))** - Streaming API
+- **[Sanction](https://sanction.tv)** - Streaming API
 
 ## 📝 License
 
