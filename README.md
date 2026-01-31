@@ -60,7 +60,7 @@ A modern Netflix-style desktop streaming application built with Electron and Nex
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/cinestream.git
+   git clone https://github.com/goonernator/cinestream.git
    cd cinestream
    ```
 
@@ -112,10 +112,11 @@ A modern Netflix-style desktop streaming application built with Electron and Nex
 Special thanks to **[barcodebimbo](https://github.com/barcodebimbo)** for:
 - The Rivestream API integration and inspiration
 - Providing the foundation that made this project possible
+- check out **[Free Movies](https://sanction.tv)** this is why this project exists
 
 This project also uses:
 - **[TMDB](https://www.themoviedb.org/)** - Movie and TV metadata
-- **[tlo.sh](https://tlo.sh/)** - Streaming API
+- **[Sanction](https://sanction.tv))** - Streaming API
 
 ## 📝 License
 
