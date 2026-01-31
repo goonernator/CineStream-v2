@@ -58,7 +58,7 @@ A modern Netflix-style desktop streaming application built with Electron and Nex
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/goonernator/cinestream.git
+   git clone https://github.com/goonernator/cinestream-v2.git
    cd cinestream
    ```
 
