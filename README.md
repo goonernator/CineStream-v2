@@ -34,22 +34,27 @@ A modern Netflix-style desktop streaming application built with Electron and Nex
 <div align="center">
 
 ### Home Page
-![Home Page](./screenshots/home.png)
+
+<img width="1606" height="902" alt="home" src="https://github.com/user-attachments/assets/a76c5e15-6e10-4523-8e06-82277801457d" />
+
 
 ### Video Player
-![Video Player](./screenshots/player.png)
+
+<img width="1739" height="895" alt="player" src="https://github.com/user-attachments/assets/a2bcb588-f05e-41d1-a62e-742f556ca9a6" />
+
 
 ### Details Page
-![Details Page](./screenshots/details.png)
 
-### Browse Page
-![Browse Page](./screenshots/browse.png)
+<img width="1523" height="1042" alt="details" src="https://github.com/user-attachments/assets/74eb002d-0beb-47df-8474-c32989eb6c05" />
 
 ### Settings Page
-![Browse Page](./screenshots/settings.png)
+
+<img width="1513" height="1299" alt="settings" src="https://github.com/user-attachments/assets/62aa1c69-fbf9-4acc-ab34-770b4dddff32" />
+
 
 ### Search Page
-![Browse Page](./screenshots/search.png)
+
+<img width="1513" height="1030" alt="search" src="https://github.com/user-attachments/assets/4e7849a5-3d40-4a95-9330-5c21621a2fb1" />
 
 </div>
 
