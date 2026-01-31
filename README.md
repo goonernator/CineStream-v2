@@ -45,6 +45,12 @@ A modern Netflix-style desktop streaming application built with Electron and Nex
 ### Browse Page
 ![Browse Page](./screenshots/browse.png)
 
+### Settings Page
+![Browse Page](./screenshots/settings.png)
+
+### Search Page
+![Browse Page](./screenshots/search.png)
+
 </div>
 
 ## 🚀 Installation
