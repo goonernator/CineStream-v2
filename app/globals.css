@@ -1,0 +1,415 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --netflix-bg: #141414;
+  --netflix-dark: #000000;
+  --netflix-red: #E50914;
+  --netflix-light: #FFFFFF;
+  --netflix-gray: #808080;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  background-color: var(--netflix-bg);
+  color: var(--netflix-light);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Invisible scrollbars */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+*::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* Allow rounded corners - removed global override to enable rounded UI elements */
+
+/* Custom scrollbar for carousels (invisible but functional) */
+.carousel-container {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.carousel-container::-webkit-scrollbar {
+  display: none;
+}
+
+/* Video.js Netflix theme */
+.video-js {
+  width: 100%;
+  height: 100%;
+  background-color: var(--netflix-dark);
+}
+
+.video-js .vjs-big-play-button {
+  background-color: color-mix(in srgb, var(--netflix-red) 80%, transparent);
+  border: none;
+  border-radius: 0 !important;
+  width: 80px;
+  height: 80px;
+  line-height: 80px;
+  margin-top: -40px;
+  margin-left: -40px;
+  font-size: 3em;
+}
+
+.video-js .vjs-big-play-button:hover {
+  background-color: var(--netflix-red);
+}
+
+.video-js .vjs-progress-holder {
+  height: 4px;
+}
+
+.video-js .vjs-play-progress {
+  background-color: var(--netflix-red);
+}
+
+.video-js .vjs-load-progress {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.video-js .vjs-control-bar {
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.8));
+  height: 60px;
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+/* Episode list scrollbar */
+.episode-list-container::-webkit-scrollbar {
+  display: none;
+}
+
+.episode-list-container {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Title Bar */
+.title-bar {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.title-bar-button {
+  -webkit-app-region: no-drag;
+  color: var(--netflix-light);
+}
+
+.title-bar-button:hover {
+  color: var(--netflix-light);
+}
+
+/* Pulsing glow effect for app name - uses current accent color */
+.cinestream-title {
+  text-shadow: 0 0 10px color-mix(in srgb, var(--netflix-red) 50%, transparent),
+               0 0 20px color-mix(in srgb, var(--netflix-red) 30%, transparent),
+               0 0 30px color-mix(in srgb, var(--netflix-red) 20%, transparent);
+}
+
+/* Depth and Shadow System */
+.shadow-elevation-1 {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.shadow-elevation-2 {
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.shadow-elevation-3 {
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), 0 6px 6px rgba(0, 0, 0, 0.4);
+}
+
+.shadow-elevation-4 {
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.6), 0 10px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Glow Effects - themed with accent color */
+.glow-red {
+  box-shadow: 0 0 20px color-mix(in srgb, var(--netflix-red) 50%, transparent), 
+              0 0 40px color-mix(in srgb, var(--netflix-red) 30%, transparent);
+}
+
+.glow-red-hover:hover {
+  box-shadow: 0 0 25px color-mix(in srgb, var(--netflix-red) 70%, transparent), 
+              0 0 50px color-mix(in srgb, var(--netflix-red) 40%, transparent);
+}
+
+/* Lift Animation */
+@keyframes lift {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-lift {
+  animation: lift 0.3s ease-out;
+}
+
+/* Smooth Transitions */
+.transition-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Slide In Animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Shimmer Animation for Skeletons */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
+}
+
+/* Scale Up Animation */
+@keyframes scaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-up {
+  animation: scaleUp 0.3s ease-out;
+}
+
+/* Stagger Animation Delays */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }
+.stagger-7 { animation-delay: 0.35s; }
+.stagger-8 { animation-delay: 0.4s; }
+
+/* Page Transition Animations - opacity only to avoid breaking fixed positioning */
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pageExit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.page-transition {
+  will-change: opacity;
+}
+
+.page-enter {
+  animation: pageEnter 0.25s ease-out forwards;
+}
+
+.page-exit {
+  animation: pageExit 0.1s ease-in forwards;
+}
+
+/* Spotlight effect for onboarding */
+.spotlight-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+}
+
+.spotlight-hole {
+  position: absolute;
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.85);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Context menu animation */
+@keyframes contextMenuIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.context-menu-enter {
+  animation: contextMenuIn 0.15s ease-out forwards;
+}
+
+/* Notification badge pulse */
+@keyframes notificationPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+.notification-pulse {
+  animation: notificationPulse 2s ease-in-out infinite;
+}
+
+/* Hero crossfade */
+@keyframes heroFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes heroFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.hero-fade-in {
+  animation: heroFadeIn 0.8s ease-in-out forwards;
+}
+
+.hero-fade-out {
+  animation: heroFadeOut 0.8s ease-in-out forwards;
+}
+
+/* Magazine Card Animations */
+@keyframes magazineCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes shine {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(200%);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px var(--glow-color, rgba(229, 9, 20, 0.3));
+  }
+  50% {
+    box-shadow: 0 0 40px var(--glow-color, rgba(229, 9, 20, 0.5));
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Custom scrollbar for magazine grid */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}

@@ -1,0 +1,291 @@
+const { app, BrowserWindow, protocol, net } = require('electron');
+const path = require('path');
+const isDev = !app.isPackaged;
+
+let mainWindow;
+
+// Register custom protocol to handle HLS stream proxying
+app.whenReady().then(() => {
+  // Intercept proxy-hls requests and use Electron's net module
+  protocol.handle('proxy-hls', async (request) => {
+    const url = new URL(request.url);
+    const targetUrl = url.searchParams.get('url');
+    
+    if (!targetUrl) {
+      return new Response('Missing URL parameter', { status: 400 });
+    }
+    
+    try {
+      // Use Electron's net.request to bypass CORS
+      return new Promise((resolve, reject) => {
+        const netRequest = net.request({
+          url: decodeURIComponent(targetUrl),
+          method: 'GET',
+        });
+        
+        netRequest.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        netRequest.setHeader('Accept', '*/*');
+        
+        netRequest.on('response', (response) => {
+          const chunks = [];
+          const headers = {};
+          
+          // Copy response headers
+          Object.keys(response.headers).forEach(key => {
+            headers[key] = Array.isArray(response.headers[key]) 
+              ? response.headers[key].join(', ') 
+              : response.headers[key];
+          });
+          
+          // Add CORS headers
+          headers['access-control-allow-origin'] = '*';
+          headers['access-control-allow-methods'] = 'GET, OPTIONS';
+          
+          response.on('data', (chunk) => {
+            chunks.push(chunk);
+          });
+          
+          response.on('end', () => {
+            const buffer = Buffer.concat(chunks);
+            const contentType = headers['content-type'] || 'application/octet-stream';
+            
+            // Check if this is an m3u8 playlist
+            if (targetUrl.includes('.m3u8') || contentType.includes('mpegurl')) {
+              // Rewrite URLs in the playlist
+              let manifestText = buffer.toString('utf8');
+              const baseUrl = new URL(targetUrl);
+              const basePath = baseUrl.origin + baseUrl.pathname.substring(0, baseUrl.pathname.lastIndexOf('/') + 1);
+              
+              manifestText = manifestText.split('\n').map(line => {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed.startsWith('#')) return line;
+                
+                let segmentUrl = trimmed;
+                if (!segmentUrl.startsWith('http')) {
+                  segmentUrl = basePath + segmentUrl;
+                }
+                
+                return `proxy-hls:?url=${encodeURIComponent(segmentUrl)}`;
+              }).join('\n');
+              
+              resolve(new Response(manifestText, {
+                status: response.statusCode,
+                headers: { ...headers, 'content-type': 'application/vnd.apple.mpegurl' }
+              }));
+            } else {
+              resolve(new Response(buffer, {
+                status: response.statusCode,
+                headers
+              }));
+            }
+          });
+        });
+        
+        netRequest.on('error', (error) => {
+          console.error('Stream proxy error:', error);
+          reject(new Response(`Proxy error: ${error.message}`, { status: 500 }));
+        });
+        
+        netRequest.end();
+      });
+    } catch (error) {
+      console.error('Error in proxy-hls protocol:', error);
+      return new Response(`Error: ${error.message}`, { status: 500 });
+    }
+  });
+});
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    minWidth: 1200,
+    minHeight: 700,
+    backgroundColor: '#141414',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      enableRemoteModule: false,
+      webSecurity: true,
+      preload: path.join(__dirname, 'preload.js'),
+      // Allow iframes to work properly
+      webviewTag: true,
+      allowRunningInsecureContent: false,
+    },
+    icon: path.join(__dirname, 'icon.png'),
+    frame: false,
+    autoHideMenuBar: true,
+    show: false,
+  });
+
+  // Load the app
+  if (isDev) {
+    // Development: connect to Next.js dev server
+    mainWindow.loadURL('http://localhost:42069');
+    mainWindow.webContents.on('did-fail-load', () => {
+      // Retry after a short delay if Next.js isn't ready
+      setTimeout(() => {
+        mainWindow.loadURL('http://localhost:42069');
+      }, 1000);
+    });
+  } else {
+    // Production: run Next.js server directly in Electron process
+    const fs = require('fs');
+    const serverPath = path.join(process.resourcesPath, 'app', '.next', 'standalone');
+    const serverJsPath = path.join(serverPath, 'server.js');
+    
+    // Check if standalone server exists
+    if (!fs.existsSync(serverJsPath)) {
+      console.error('Standalone server not found at:', serverJsPath);
+      mainWindow.loadURL('about:blank');
+      return;
+    }
+    
+    // Change to the server directory and set environment
+    process.chdir(serverPath);
+    process.env.PORT = '42069';
+    process.env.NODE_ENV = 'production';
+    process.env.HOSTNAME = '127.0.0.1';
+    
+    // Run the server directly in this process
+    // This avoids needing to spawn a separate Node.js process
+    try {
+      // Import and start the Next.js server
+      require(serverJsPath);
+      
+      // Wait a moment for server to start, then load
+      setTimeout(() => {
+        mainWindow.loadURL('http://localhost:42069');
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to start Next.js server:', error);
+      mainWindow.loadURL('about:blank');
+    }
+  }
+
+  // Show window when ready
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    // Only open DevTools in development mode
+    if (isDev) {
+      mainWindow.webContents.openDevTools();
+    } else {
+      // In production, disable DevTools completely
+      mainWindow.webContents.on('devtools-opened', () => {
+        mainWindow.webContents.closeDevTools();
+      });
+    }
+  });
+
+  // Remove React DevTools extension if present (runs after page loads)
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.executeJavaScript(`
+      (function() {
+        if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+          try {
+            delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+          } catch (e) {}
+        }
+        // Prevent React DevTools from attaching
+        Object.defineProperty(window, '__REACT_DEVTOOLS_GLOBAL_HOOK__', {
+          value: undefined,
+          writable: false,
+          configurable: false,
+        });
+      })();
+    `).catch(() => {
+      // Ignore errors
+    });
+  });
+
+  // Prevent navigation away from the app (iframe frame-busting protection)
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const parsedUrl = new URL(url);
+    const currentUrl = new URL(mainWindow.webContents.getURL());
+    
+    // Only allow navigation within our app (localhost)
+    if (parsedUrl.hostname !== currentUrl.hostname && parsedUrl.hostname !== 'localhost') {
+      console.log('Blocked navigation to:', url);
+      event.preventDefault();
+    }
+  });
+
+  // Handle new window requests (popups from iframes)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Open external URLs in the default browser
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      const { shell } = require('electron');
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  // Handle window controls
+  const { ipcMain, shell } = require('electron');
+  ipcMain.on('window-minimize', () => {
+    mainWindow.minimize();
+  });
+
+  ipcMain.on('window-maximize', () => {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  });
+
+  ipcMain.on('window-close', () => {
+    mainWindow.close();
+  });
+
+  // Handle open external URL from renderer
+  ipcMain.on('open-external', (event, url) => {
+    shell.openExternal(url);
+  });
+
+  // Send maximized state changes
+  mainWindow.on('maximize', () => {
+    mainWindow.webContents.send('window-maximized');
+  });
+
+  mainWindow.on('unmaximize', () => {
+    mainWindow.webContents.send('window-unmaximized');
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    // Server runs in main process, no need to kill separately
+    // Process will exit when all windows are closed
+  });
+
+  // Handle external links
+  // (already handled above via setWindowOpenHandler)
+}
+
+app.whenReady().then(() => {
+  // Protocol handler is already registered above
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// Handle navigation for Next.js routes
+app.on('web-contents-created', (event, contents) => {
+  contents.on('will-navigate', (navigationEvent, navigationUrl) => {
+    const parsedUrl = new URL(navigationUrl);
+
+    if (parsedUrl.origin !== 'http://localhost:42069' && parsedUrl.origin !== 'file://') {
+      navigationEvent.preventDefault();
+    }
+  });
+});

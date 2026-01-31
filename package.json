@@ -1,0 +1,94 @@
+{
+  "name": "Cinestream",
+  "version": "2.0.0",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "next dev -p 42069",
+    "build": "next build",
+    "start": "next start",
+    "electron": "electron .",
+    "electron:dev": "node scripts/electron-dev.js",
+    "electron:build": "npm run build && electron-builder",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@videojs/http-streaming": "^3.0.2",
+    "axios": "^1.6.2",
+    "cheerio": "^1.1.2",
+    "hls.js": "^1.6.15",
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "video.js": "^8.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/video.js": "^7.3.54",
+    "autoprefixer": "^10.4.16",
+    "concurrently": "^9.1.0",
+    "electron": "^32.0.0",
+    "electron-builder": "^25.1.8",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.0.0",
+    "postcss": "^8.4.32",
+    "puppeteer": "^21.11.0",
+    "tailwindcss": "^3.3.6",
+    "typescript": "^5.3.3",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.cinestream.app",
+    "productName": "Cinestream",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      ".next/standalone/**/*",
+      ".next/static/**/*",
+      "app/**/*",
+      "components/**/*",
+      "lib/**/*",
+      "public/**/*",
+      "electron/**/*",
+      "package.json",
+      "next.config.js",
+      "tailwind.config.ts",
+      "tsconfig.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "app/.next/standalone",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "electron/icon.icns"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "electron/icon.png"
+    }
+  }
+}

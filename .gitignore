@@ -1,0 +1,48 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# electron
+/dist
+/electron/main.js.map
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# screenshots (keep directory but ignore large files)
+screenshots/*
+!screenshots/.gitkeep
+
+# test scripts
+scripts/test-*.js
+scripts/*debug*.html
+scripts/vidflix-scripts/
+scripts/rivestream-api-standalone.js
