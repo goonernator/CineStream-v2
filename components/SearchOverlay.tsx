@@ -7,7 +7,9 @@ import { tmdb } from '@/lib/tmdb';
 import { TMDB_IMAGE_BASE } from '@/lib/tmdb';
 import { profiles } from '@/lib/profiles';
 import { filterValidMedia } from '@/lib/mediaFilter';
-import type { Movie, TVShow } from '@/lib/types';
+import { logger } from '@/lib/logger';
+import { useDebounce } from '@/lib/useDebounce';
+import type { Movie, TVShow, Person } from '@/lib/types';
 
 const BASE_RECENT_SEARCHES_KEY = 'recent_searches';
 const MAX_RECENT_SEARCHES = 10;
@@ -73,7 +75,7 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   const [trending, setTrending] = useState<(Movie | TVShow)[]>([]);
   const [trendingLoading, setTrendingLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedQuery = useDebounce(query, 300);
 
   // Load recent searches and trending on mount
   useEffect(() => {
@@ -101,9 +103,9 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     try {
       const results = await tmdb.getTrendingAll('day');
       setTrending(filterValidMedia(results).slice(0, 12));
-    } catch (error) {
-      console.error('Failed to load trending:', error);
-    } finally {
+      } catch (error) {
+        logger.error('Failed to load trending:', error);
+      } finally {
       setTrendingLoading(false);
     }
   };
@@ -131,29 +133,31 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  // Perform search when debounced query changes
   useEffect(() => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    if (query.trim().length < 2) {
+    if (!debouncedQuery.trim()) {
       setResults([]);
+      setLoading(false);
       return;
     }
 
-    searchTimeoutRef.current = setTimeout(async () => {
-      setLoading(true);
+    // Set loading state
+    setLoading(true);
+
+    const performSearch = async () => {
       try {
-        let searchResults: any[] = [];
+        let searchResults: (Movie | TVShow | Person & { media_type?: string })[] = [];
         if (filter === 'multi') {
-          searchResults = await tmdb.searchMulti(query);
+          searchResults = await tmdb.searchMulti(debouncedQuery);
         } else if (filter === 'movie') {
-          searchResults = await tmdb.searchMovies(query);
+          searchResults = await tmdb.searchMovies(debouncedQuery);
         } else if (filter === 'tv') {
-          searchResults = await tmdb.searchTV(query);
+          searchResults = await tmdb.searchTV(debouncedQuery);
         } else if (filter === 'person') {
-          searchResults = await tmdb.searchMulti(query);
-          searchResults = searchResults.filter(item => item.media_type === 'person');
+          const multiResults = await tmdb.searchMulti(debouncedQuery);
+          searchResults = multiResults.filter((item): item is Person & { media_type?: string } => 
+            (item as { media_type?: string }).media_type === 'person'
+          );
         }
 
         // Filter out incomplete items - for media items, use filterValidMedia, for people keep profile_path check
@@ -167,19 +171,15 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
         });
         setResults(filtered);
       } catch (error) {
-        console.error('Search error:', error);
+        logger.error('Search error:', error);
         setResults([]);
       } finally {
         setLoading(false);
       }
-    }, 300);
-
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
     };
-  }, [query, filter]);
+
+    performSearch();
+  }, [debouncedQuery, filter]);
 
   const saveRecentSearch = (searchQuery: string) => {
     const trimmed = searchQuery.trim();
@@ -207,7 +207,7 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     onClose();
   };
 
-  const handleItemClick = (item: any) => {
+  const handleItemClick = (item: Movie | TVShow | Person & { media_type?: string }) => {
     const isPerson = item.media_type === 'person' || (!item.media_type && item.profile_path);
     if (isPerson) return; // Don't navigate for people (for now)
     

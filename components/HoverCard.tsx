@@ -49,7 +49,7 @@ export default function HoverCard({ item, onClose, parentRef, mouseX, mouseY, cl
           setTrailer(videos[0]);
         }
       } catch (error) {
-        console.error('Failed to load trailer:', error);
+        logger.error('Failed to load trailer:', error);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -68,7 +68,7 @@ export default function HoverCard({ item, onClose, parentRef, mouseX, mouseY, cl
         const favorited = await tmdb.checkFavoritesStatus(authState.sessionId, authState.accountId, item.id, isMovie ? 'movie' : 'tv');
         if (!cancelled) setIsFavorited(favorited);
       } catch (error) {
-        console.error('Failed to load status:', error);
+        logger.error('Failed to load status:', error);
       }
     };
 
@@ -112,7 +112,7 @@ export default function HoverCard({ item, onClose, parentRef, mouseX, mouseY, cl
         newState ? `Added "${title}" to watchlist` : `Removed "${title}" from watchlist`
       );
     } catch (error) {
-      console.error('Failed to update watchlist:', error);
+      logger.error('Failed to update watchlist:', error);
       toast.error('Failed to update watchlist. Please try again.');
     } finally {
       setIsUpdating(false);
@@ -144,7 +144,7 @@ export default function HoverCard({ item, onClose, parentRef, mouseX, mouseY, cl
         newState ? `Added "${title}" to favorites` : `Removed "${title}" from favorites`
       );
     } catch (error) {
-      console.error('Failed to update favorites:', error);
+      logger.error('Failed to update favorites:', error);
       toast.error('Failed to update favorites. Please try again.');
     } finally {
       setIsUpdating(false);

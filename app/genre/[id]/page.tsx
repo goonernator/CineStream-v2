@@ -7,6 +7,7 @@ import { BrowsePageSkeleton } from '@/components/CarouselSkeleton';
 import { MediaCardSkeletonGrid } from '@/components/MediaCardSkeleton';
 import { tmdb } from '@/lib/tmdb';
 import { filterValidMedia } from '@/lib/mediaFilter';
+import { logger } from '@/lib/logger';
 import type { Movie, TVShow, Genre } from '@/lib/types';
 
 // Genre icons mapping
@@ -189,7 +190,7 @@ export default function GenrePage() {
         setTotalTV(prev => prev + result.items.length);
       }
     } catch (error) {
-      console.error('Failed to load more content:', error);
+      logger.error('Failed to load more content:', error);
     } finally {
       setLoadingMore(false);
     }

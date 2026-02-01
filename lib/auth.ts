@@ -1,5 +1,6 @@
 import { tmdb, getAuthorizationUrl } from './tmdb';
 import { profiles, Profile } from './profiles';
+import { logger } from './logger';
 
 const REQUEST_TOKEN_KEY = 'tmdb_request_token';
 const PENDING_PROFILE_KEY = 'tmdb_pending_profile_id';
@@ -120,18 +121,18 @@ export const auth = {
       // Open auth URL
       const electron = (window as any).electron;
       if (electron?.openExternal) {
-        console.log('Opening browser via Electron:', authUrl);
+        logger.debug('Opening browser via Electron:', authUrl);
         electron.openExternal(authUrl);
       } else {
-        console.log('Opening browser window:', authUrl);
+        logger.debug('Opening browser window:', authUrl);
         const authWindow = window.open(authUrl, '_blank', 'noopener,noreferrer');
         if (!authWindow) {
-          console.warn('Popup blocked, falling back to redirect');
+          logger.warn('Popup blocked, falling back to redirect');
           window.location.href = authUrl;
         }
       }
     } catch (error) {
-      console.error('Failed to initiate login:', error);
+      logger.error('Failed to initiate login:', error);
       throw error;
     }
   },

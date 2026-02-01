@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import StreamPlayer from '@/components/StreamPlayer';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import StillWatchingModal from '@/components/StillWatchingModal';
 import { streaming } from '@/lib/streaming';
 import { tmdb } from '@/lib/tmdb';
@@ -97,11 +98,11 @@ export default function WatchPage() {
             }
           } catch (parseError) {
             // Skip corrupted entries
-            console.warn(`Failed to parse consecutive episode data for key ${key}:`, parseError);
+            logger.warn(`Failed to parse consecutive episode data for key ${key}:`, parseError);
           }
         }
       } catch (error) {
-        console.error('Failed to check consecutive episode keys:', error);
+        logger.error('Failed to check consecutive episode keys:', error);
       }
 
       // Set a maximum loading time
@@ -124,7 +125,7 @@ export default function WatchPage() {
           const result = await streaming.getMovieStreamSourcesAsync(id);
           if (isCancelled) return;
           
-          console.log('Movie sources:', result.sources, 'Captions:', result.captions);
+          logger.debug('Movie sources:', result.sources, 'Captions:', result.captions);
           clearTimeout(loadingTimeout);
           if (result.sources.length === 0) {
             setError('Unable to find streaming sources for this movie. Please try again later or check back soon.');
@@ -140,7 +141,7 @@ export default function WatchPage() {
           const result = await streaming.getTVStreamSourcesAsync(id, season, episode);
           if (isCancelled) return;
           
-          console.log('TV sources:', result.sources, 'Captions:', result.captions);
+          logger.debug('TV sources:', result.sources, 'Captions:', result.captions);
           clearTimeout(loadingTimeout);
           if (result.sources.length === 0) {
             setError(`Unable to find streaming sources for Season ${season}, Episode ${episode}. Please try again later or check back soon.`);
@@ -175,7 +176,7 @@ export default function WatchPage() {
                 }
               }
             } catch (error) {
-              console.error('Failed to check consecutive episode data:', error);
+              logger.error('Failed to check consecutive episode data:', error);
               // If data is corrupted, reset the count
               watchProgress.resetConsecutiveEpisodeCount(id);
             }
@@ -184,7 +185,7 @@ export default function WatchPage() {
       } catch (error) {
         clearTimeout(loadingTimeout);
         if (isCancelled) return;
-        console.error('Failed to load media:', error);
+        logger.error('Failed to load media:', error);
         const errorMessage = error instanceof Error 
           ? (error.message.includes('fetch') || error.message.includes('network') 
               ? 'Network error: Unable to connect to the server. Please check your internet connection and try again.'
@@ -258,19 +259,37 @@ export default function WatchPage() {
   return (
     <div className="min-h-screen bg-netflix-dark">
       <div className="relative w-full" style={{ height: 'calc(100vh)' }}>
-        <StreamPlayer 
-          sources={streamSources}
-          captions={captions}
-          type={type || 'movie'} 
-          title={type === 'tv' ? `${title} - S${season}E${episode}` : title}
-          mediaId={id}
-          season={type === 'tv' ? season : undefined}
-          episode={type === 'tv' ? episode : undefined}
-          hasNextEpisode={hasNextEpisode}
-          onNextEpisode={handleNextEpisode}
-          onControlsVisibilityChange={handleControlsVisibilityChange}
-          pausedForStillWatching={isPausedForStillWatching}
-        />
+        <ErrorBoundary
+          fallback={
+            <div className="min-h-screen bg-netflix-dark flex items-center justify-center">
+              <div className="text-center px-4 max-w-md">
+                <div className="text-xl text-netflix-gray font-semibold mb-2">
+                  Player error occurred. Please try again.
+                </div>
+                <button
+                  onClick={() => router.back()}
+                  className="px-6 py-2 bg-netflix-red hover:bg-red-600 transition-all duration-300 rounded-lg shadow-lg shadow-netflix-red/50 hover:shadow-xl hover:shadow-netflix-red/70 hover:-translate-y-1"
+                >
+                  ← Go Back
+                </button>
+              </div>
+            </div>
+          }
+        >
+          <StreamPlayer 
+            sources={streamSources}
+            captions={captions}
+            type={type || 'movie'} 
+            title={type === 'tv' ? `${title} - S${season}E${episode}` : title}
+            mediaId={id}
+            season={type === 'tv' ? season : undefined}
+            episode={type === 'tv' ? episode : undefined}
+            hasNextEpisode={hasNextEpisode}
+            onNextEpisode={handleNextEpisode}
+            onControlsVisibilityChange={handleControlsVisibilityChange}
+            pausedForStillWatching={isPausedForStillWatching}
+          />
+        </ErrorBoundary>
         {/* Back Button - fades with controls */}
         <div className={`absolute top-14 left-4 z-50 transition-opacity duration-300 ${
           showControls ? 'opacity-100' : 'opacity-0'

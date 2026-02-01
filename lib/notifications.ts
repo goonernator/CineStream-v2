@@ -1,6 +1,7 @@
 // Notification system for CineStream
 
 import { profiles } from './profiles';
+import type { Movie, TVShow } from './types';
 
 export interface Notification {
   id: string;
@@ -140,7 +141,7 @@ export const notifications = {
   },
 
   // Check if we should notify about new recommendations
-  checkNewRecommendations(currentRecommendations: any[], previousCount: number): void {
+  checkNewRecommendations(currentRecommendations: (Movie | TVShow)[], previousCount: number): void {
     if (currentRecommendations.length > previousCount && previousCount > 0) {
       const newCount = currentRecommendations.length - previousCount;
       this.add({
@@ -153,7 +154,7 @@ export const notifications = {
   },
 
   // Check if we should notify about trending content
-  checkTrendingUpdates(currentTrending: any[], previousTrendingIds: Set<number>): Set<number> {
+  checkTrendingUpdates(currentTrending: (Movie | TVShow)[], previousTrendingIds: Set<number>): Set<number> {
     const currentIds = new Set(currentTrending.map(item => item.id));
     const newTrending = currentTrending.filter(item => !previousTrendingIds.has(item.id));
     
@@ -173,7 +174,7 @@ export const notifications = {
   },
 
   // Check if we should notify about what's new (latest releases)
-  checkWhatsNew(currentReleases: any[], previousReleaseIds: Set<number>): Set<number> {
+  checkWhatsNew(currentReleases: (Movie | TVShow)[], previousReleaseIds: Set<number>): Set<number> {
     const currentIds = new Set(currentReleases.map(item => item.id));
     const newReleases = currentReleases.filter(item => !previousReleaseIds.has(item.id));
     

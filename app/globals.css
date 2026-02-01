@@ -45,6 +45,10 @@ body {
 .carousel-container {
   scrollbar-width: none;
   -ms-overflow-style: none;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+  overscroll-behavior-x: contain; /* Prevent scroll chaining */
+  will-change: scroll-position; /* Optimize for scrolling */
 }
 
 .carousel-container::-webkit-scrollbar {

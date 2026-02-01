@@ -7,6 +7,7 @@ import MagazineGrid, { MagazineGridSkeleton } from '@/components/MagazineGrid';
 import { auth } from '@/lib/auth';
 import { tmdb, TMDB_IMAGE_BASE } from '@/lib/tmdb';
 import { useToast } from '@/lib/toast';
+import { logger } from '@/lib/logger';
 import type { Movie, TVShow, MediaItem } from '@/lib/types';
 
 type WatchlistItem = (Movie | TVShow) & { media_type?: 'movie' | 'tv' };
@@ -55,7 +56,7 @@ export default function WatchlistPage() {
       const data = await tmdb.getWatchlist(authState.sessionId!, authState.accountId!);
       setWatchlist(data);
     } catch (error) {
-      console.error('Failed to load watchlist:', error);
+      logger.error('Failed to load watchlist:', error);
       toast.error('Failed to load watchlist');
     } finally {
       setLoading(false);
@@ -80,7 +81,7 @@ export default function WatchlistPage() {
       setWatchlist(prev => prev.filter(f => f.id !== item.id));
       toast.success(`Removed "${title}" from watchlist`);
     } catch (error) {
-      console.error('Failed to remove from watchlist:', error);
+      logger.error('Failed to remove from watchlist:', error);
       toast.error('Failed to remove from watchlist');
     }
   };

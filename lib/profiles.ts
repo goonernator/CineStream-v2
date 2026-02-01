@@ -1,4 +1,5 @@
 // Profile management for multi-account support
+import { logger } from './logger';
 
 export interface Profile {
   id: string;
@@ -53,7 +54,7 @@ export const profiles = {
         return JSON.parse(stored);
       }
     } catch (error) {
-      console.error('Failed to get profiles:', error);
+      logger.error('Failed to get profiles:', error);
     }
     return [];
   },
@@ -64,7 +65,7 @@ export const profiles = {
     try {
       localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(profileList));
     } catch (error) {
-      console.error('Failed to save profiles:', error);
+      logger.error('Failed to save profiles:', error);
     }
   },
 
@@ -209,10 +210,10 @@ export const profiles = {
       // localStorage.removeItem('tmdb_session_id');
       // localStorage.removeItem('tmdb_account');
 
-      console.log('Migrated legacy account to profile system');
+      logger.debug('Migrated legacy account to profile system');
       return profile;
     } catch (error) {
-      console.error('Failed to migrate legacy account:', error);
+      logger.error('Failed to migrate legacy account:', error);
       return null;
     }
   },

@@ -8,6 +8,7 @@ import { tmdb } from '@/lib/tmdb';
 import { watchProgress } from '@/lib/watchProgress';
 import { notifications } from '@/lib/notifications';
 import { filterValidMedia } from '@/lib/mediaFilter';
+import { logger } from '@/lib/logger';
 import type { Movie, TVShow } from '@/lib/types';
 
 export default function Home() {
@@ -51,7 +52,7 @@ export default function Home() {
                     return await tmdb.getTVDetails(item.id);
                   }
                 } catch (error) {
-                  console.error(`Failed to load continue watching item ${item.id}:`, error);
+                  logger.error(`Failed to load continue watching item ${item.id}:`, error);
                   return null;
                 }
               });
@@ -116,7 +117,7 @@ export default function Home() {
           prevLatestReleaseIdsRef.current = notifications.checkWhatsNew(latest, prevLatestReleaseIdsRef.current);
         }
       } catch (error) {
-        console.error('Failed to load data:', error);
+        logger.error('Failed to load data:', error);
       } finally {
         setLoading(false);
       }
@@ -162,7 +163,7 @@ export default function Home() {
         }
         prevRecommendationsCountRef.current = personalizedRecs.length;
       } catch (error) {
-        console.error('Failed to load recommendations:', error);
+        logger.error('Failed to load recommendations:', error);
         setRecommendations([]);
       } finally {
         setRecommendationsLoading(false);

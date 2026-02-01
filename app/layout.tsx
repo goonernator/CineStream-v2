@@ -10,6 +10,7 @@ import PageTransition from '@/components/PageTransition';
 import KeyboardShortcuts from '@/components/KeyboardShortcuts';
 import OnboardingTour from '@/components/OnboardingTour';
 import DisableReactDevTools from '@/components/DisableReactDevTools';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 export const metadata: Metadata = {
   title: 'Cinestream',
@@ -25,22 +26,26 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="bg-netflix-bg text-netflix-light">
         <DisableReactDevTools />
-        <ThemeProvider>
-          <ProfileProvider>
-            <ToastProvider>
-              <TitleBar />
-              <ProfileGuard>
-                <NavigationWrapper>
-                  <PageTransition>
-                    {children}
-                  </PageTransition>
-                </NavigationWrapper>
-              </ProfileGuard>
-              <KeyboardShortcuts />
-              <OnboardingTour />
-            </ToastProvider>
-          </ProfileProvider>
-        </ThemeProvider>
+        <ErrorBoundary>
+          <ThemeProvider>
+            <ProfileProvider>
+              <ToastProvider>
+                <TitleBar />
+                <ProfileGuard>
+                  <NavigationWrapper>
+                    <PageTransition>
+                      <ErrorBoundary>
+                        {children}
+                      </ErrorBoundary>
+                    </PageTransition>
+                  </NavigationWrapper>
+                </ProfileGuard>
+                <KeyboardShortcuts />
+                <OnboardingTour />
+              </ToastProvider>
+            </ProfileProvider>
+          </ThemeProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

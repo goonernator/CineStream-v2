@@ -6,6 +6,7 @@ import MediaGrid from '@/components/MediaGrid';
 import { BrowsePageSkeleton } from '@/components/CarouselSkeleton';
 import { tmdb } from '@/lib/tmdb';
 import { filterValidMedia } from '@/lib/mediaFilter';
+import { logger } from '@/lib/logger';
 import type { TVShow, Genre, DiscoverFilters } from '@/lib/types';
 
 export default function BrowseTVPage() {
@@ -25,7 +26,7 @@ export default function BrowseTVPage() {
         const genreList = await tmdb.getTVGenres();
         setGenres(genreList);
       } catch (error) {
-        console.error('Failed to load genres:', error);
+        logger.error('Failed to load genres:', error);
       }
     };
     loadGenres();

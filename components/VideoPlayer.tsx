@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import { watchProgress } from '@/lib/watchProgress';
+import { logger } from '@/lib/logger';
 import type { StreamCaption } from '@/lib/streaming';
 
 interface VideoPlayerProps {
@@ -181,7 +182,7 @@ export default function VideoPlayer({
     }
     
     const caption = captions[selectedCaptionIndex];
-    console.log('Loading subtitle:', caption.language, caption.url);
+    logger.debug('Loading subtitle:', caption.language, caption.url);
     
     fetch(caption.url)
       .then(res => {
@@ -190,11 +191,11 @@ export default function VideoPlayer({
       })
       .then(vttText => {
         const cues = parseVTT(vttText);
-        console.log(`Parsed ${cues.length} subtitle cues`);
+        logger.debug(`Parsed ${cues.length} subtitle cues`);
         setSubtitleCues(cues);
       })
       .catch(err => {
-        console.error('Error loading subtitle:', err);
+        logger.error('Error loading subtitle:', err);
         setSubtitleCues([]);
       });
   }, [selectedCaptionIndex, captions]);
@@ -265,7 +266,7 @@ export default function VideoPlayer({
           video.play().catch((error) => {
             // Ignore errors if video was removed or interrupted
             if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {
-              console.error('Failed to play video:', error);
+              logger.error('Failed to play video:', error);
             }
           });
         }
@@ -281,7 +282,7 @@ export default function VideoPlayer({
           // Only log if there's meaningful error information
           const hasErrorInfo = data.type !== undefined || data.details !== undefined || data.response !== undefined || data.frag !== undefined;
           if (hasErrorInfo) {
-            const errorInfo: any = {};
+            const errorInfo: Record<string, unknown> = {};
             if (data.type !== undefined) errorInfo.type = data.type;
             if (data.details !== undefined) errorInfo.details = data.details;
             if (data.response) {
@@ -299,20 +300,20 @@ export default function VideoPlayer({
           
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.log('Network error, attempting to recover...');
+              logger.debug('Network error, attempting to recover...');
               try {
                 hls.startLoad();
               } catch (e) {
-                console.error('Failed to recover from network error:', e);
+                logger.error('Failed to recover from network error:', e);
                 if (onErrorRef.current) onErrorRef.current();
               }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              console.log('Media error, attempting to recover...');
+              logger.debug('Media error, attempting to recover...');
               try {
                 hls.recoverMediaError();
               } catch (e) {
-                console.error('Failed to recover from media error:', e);
+                logger.error('Failed to recover from media error:', e);
                 // Try destroying and recreating HLS instance
                 try {
                   hls.destroy();
@@ -321,14 +322,14 @@ export default function VideoPlayer({
                   newHls.attachMedia(video);
                   hlsRef.current = newHls;
                 } catch (recreateError) {
-                  console.error('Failed to recreate HLS instance:', recreateError);
+                  logger.error('Failed to recreate HLS instance:', recreateError);
                   if (onErrorRef.current) onErrorRef.current();
                 }
               }
               break;
             default:
               // For other fatal errors, try to recover by recreating HLS
-              console.log('Unknown fatal error, attempting to recover...');
+              logger.debug('Unknown fatal error, attempting to recover...');
               try {
                 hls.destroy();
                 const newHls = new Hls(createHlsConfig());
@@ -336,7 +337,7 @@ export default function VideoPlayer({
                 newHls.attachMedia(video);
                 hlsRef.current = newHls;
               } catch (recreateError) {
-                console.error('Failed to recover from fatal error:', recreateError);
+                logger.error('Failed to recover from fatal error:', recreateError);
                 if (onErrorRef.current) onErrorRef.current();
               }
               break;
@@ -352,7 +353,7 @@ export default function VideoPlayer({
           video.play().catch((error) => {
             // Ignore errors if video was removed or interrupted
             if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {
-              console.error('Failed to play video:', error);
+              logger.error('Failed to play video:', error);
             }
           });
         }
@@ -366,7 +367,7 @@ export default function VideoPlayer({
           video.play().catch((error) => {
             // Ignore errors if video was removed or interrupted
             if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {
-              console.error('Failed to play video:', error);
+              logger.error('Failed to play video:', error);
             }
           });
         }
@@ -419,9 +420,9 @@ export default function VideoPlayer({
                 lastWatched: Date.now(),
               });
               lastSaveTime.current = now;
-              console.log('Progress saved:', { mediaId: mid, type: t, progress: progressPercent.toFixed(1) + '%' });
+              logger.debug('Progress saved:', { mediaId: mid, type: t, progress: progressPercent.toFixed(1) + '%' });
             } catch (error) {
-              console.error('Failed to save progress:', error);
+              logger.error('Failed to save progress:', error);
             }
           }
         }
@@ -453,7 +454,7 @@ export default function VideoPlayer({
               video.currentTime = restoreTime;
               progressRestored.current = true;
             } catch (error) {
-              console.error('Failed to restore progress:', error);
+              logger.error('Failed to restore progress:', error);
             }
           }
         }
@@ -695,6 +696,7 @@ export default function VideoPlayer({
         className="w-full h-full"
         playsInline
         onClick={togglePlay}
+        aria-label={title || 'Video player'}
       />
 
       {/* Custom Subtitle Overlay */}
@@ -721,6 +723,7 @@ export default function VideoPlayer({
               handleSkipIntro();
             }}
             className="bg-white/95 hover:bg-white text-black px-6 py-3 rounded-md flex items-center gap-2 transition-all duration-200 hover:scale-105 shadow-xl font-semibold text-lg pointer-events-auto"
+            aria-label="Skip intro"
           >
             <span>Skip Intro</span>
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -741,6 +744,7 @@ export default function VideoPlayer({
               }
             }}
             className="bg-white/95 hover:bg-white text-black px-6 py-3 rounded-md flex items-center gap-2 transition-all duration-200 hover:scale-105 shadow-xl font-semibold text-lg pointer-events-auto"
+            aria-label="Play next episode"
           >
             <span>Next Episode</span>
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -781,6 +785,7 @@ export default function VideoPlayer({
                 togglePlay();
               }}
               className="w-20 h-20 rounded-full bg-netflix-red/90 hover:bg-netflix-red flex items-center justify-center transition-all duration-300 hover:scale-110 pointer-events-auto shadow-2xl shadow-netflix-red/60 hover:shadow-3xl glow-red-hover"
+              aria-label={isPlaying ? 'Pause video' : 'Play video'}
             >
               <svg className="w-10 h-10 text-white ml-1" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M8 5v14l11-7z" />
@@ -800,6 +805,7 @@ export default function VideoPlayer({
               value={currentTime}
               onChange={handleSeek}
               onClick={(e) => e.stopPropagation()}
+              aria-label="Seek video"
               className="w-full h-1 bg-gray-600 rounded-full appearance-none cursor-pointer
                 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 
                 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-netflix-red 
@@ -822,6 +828,7 @@ export default function VideoPlayer({
                   togglePlay();
                 }}
                 className="hover:text-netflix-red transition-all duration-200 hover:scale-110 hover:shadow-lg"
+                aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? (
                   <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
@@ -842,6 +849,7 @@ export default function VideoPlayer({
                 }}
                 className="hover:text-netflix-red transition-all duration-200 hover:scale-110 hover:shadow-lg"
                 title="Rewind 10s"
+                aria-label="Rewind 10 seconds"
               >
                 <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M11.99 5V1l-5 5 5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6h-2c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
@@ -857,6 +865,7 @@ export default function VideoPlayer({
                 }}
                 className="hover:text-netflix-red transition-all duration-200 hover:scale-110 hover:shadow-lg"
                 title="Forward 10s"
+                aria-label="Forward 10 seconds"
               >
                 <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/>
@@ -872,6 +881,7 @@ export default function VideoPlayer({
                     toggleMute();
                   }} 
                   className="hover:text-netflix-red transition-all duration-200 hover:scale-110 hover:shadow-lg"
+                  aria-label={isMuted || volume === 0 ? 'Unmute' : 'Mute'}
                 >
                   {isMuted || volume === 0 ? (
                     <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
@@ -895,6 +905,7 @@ export default function VideoPlayer({
                   value={volume}
                   onChange={handleVolumeChange}
                   onClick={(e) => e.stopPropagation()}
+                  aria-label="Volume control"
                   className="w-0 group-hover/volume:w-20 transition-all h-1 bg-gray-600 rounded-full appearance-none cursor-pointer
                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 
                     [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white 
@@ -922,6 +933,9 @@ export default function VideoPlayer({
                       selectedCaptionIndex >= 0 ? 'text-netflix-red' : ''
                     }`}
                     title="Subtitles"
+                    aria-label="Toggle subtitles menu"
+                    aria-expanded={showCaptionMenu}
+                    aria-haspopup="true"
                   >
                     <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z"/>
@@ -998,6 +1012,9 @@ export default function VideoPlayer({
                     }}
                     className="hover:text-netflix-red transition-all duration-200 hover:scale-110 hover:shadow-lg"
                     title="Settings"
+                    aria-label="Toggle settings menu"
+                    aria-expanded={showSettings}
+                    aria-haspopup="true"
                   >
                     <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
                       <circle cx="12" cy="5" r="2"/>
@@ -1073,6 +1090,7 @@ export default function VideoPlayer({
                   toggleFullscreen();
                 }}
                 className="hover:text-netflix-red transition-all duration-200 hover:scale-110 hover:shadow-lg"
+                aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               >
                 {isFullscreen ? (
                   <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">

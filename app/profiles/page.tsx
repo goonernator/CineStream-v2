@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { profiles, Profile, PROFILE_AVATARS, PROFILE_COLORS } from '@/lib/profiles';
 import { auth } from '@/lib/auth';
+import { logger } from '@/lib/logger';
 import ProfileCard from '@/components/ProfileCard';
 import AddProfileCard from '@/components/AddProfileCard';
 
@@ -36,7 +37,7 @@ export default function ProfilesPage() {
           router.push('/');
           return;
         } catch (error) {
-          console.error('Failed to complete login:', error);
+          logger.error('Failed to complete login:', error);
         }
         setIsAuthenticating(false);
       }

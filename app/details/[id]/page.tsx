@@ -10,6 +10,7 @@ import { tmdb, TMDB_IMAGE_BASE } from '@/lib/tmdb';
 import { watchProgress } from '@/lib/watchProgress';
 import { streaming } from '@/lib/streaming';
 import { auth } from '@/lib/auth';
+import { logger } from '@/lib/logger';
 import type { Movie, TVShow, Video, Episode, CastMember } from '@/lib/types';
 
 declare global {
@@ -122,7 +123,7 @@ export default function DetailsPage() {
           }
         }
       } catch (error) {
-        console.error('Failed to load details:', error);
+        logger.error('Failed to load details:', error);
         router.push('/');
       } finally {
         setLoading(false);
@@ -175,7 +176,7 @@ export default function DetailsPage() {
                 },
               });
             } catch (error) {
-              console.error('Error initializing YouTube player:', error);
+              logger.error('Error initializing YouTube player:', error);
             }
           }, 100);
         }
@@ -188,7 +189,7 @@ export default function DetailsPage() {
           try {
             playerRef.current.destroy();
           } catch (e) {
-            console.error('Error destroying player:', e);
+            logger.error('Error destroying player:', e);
           }
           playerRef.current = null;
         }
@@ -221,7 +222,7 @@ export default function DetailsPage() {
         checkEpisodeAvailability(tvId, seasonNumber, loadedEpisodes);
       }
     } catch (error) {
-      console.error('Failed to load episodes:', error);
+      logger.error('Failed to load episodes:', error);
     } finally {
       setLoadingEpisodes(false);
     }
@@ -311,7 +312,7 @@ export default function DetailsPage() {
       await tmdb.addToWatchlist(authState.sessionId!, authState.accountId!, id, type!, newState);
       setIsWatchlisted(newState);
     } catch (error) {
-      console.error('Failed to update watchlist:', error);
+      logger.error('Failed to update watchlist:', error);
     }
   };
 
@@ -327,7 +328,7 @@ export default function DetailsPage() {
       await tmdb.addToFavorites(authState.sessionId!, authState.accountId!, id, type!, newState);
       setIsFavorited(newState);
     } catch (error) {
-      console.error('Failed to update favorites:', error);
+      logger.error('Failed to update favorites:', error);
     }
   };
 
@@ -337,7 +338,7 @@ export default function DetailsPage() {
         playerRef.current.stopVideo();
         playerRef.current.destroy();
       } catch (e) {
-        console.error('Error stopping player:', e);
+        logger.error('Error stopping player:', e);
       }
       playerRef.current = null;
     }

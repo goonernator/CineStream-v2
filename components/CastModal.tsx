@@ -39,7 +39,7 @@ export default function CastModal({ personId, personName, profilePath, isOpen, o
 
       // Combine and sort credits by popularity/release date
       const allCredits: PersonCredit[] = personCredits.cast
-        .map((credit: any) => ({
+        .map((credit: PersonCredit) => ({
           ...credit,
           media_type: credit.media_type || (credit.title ? 'movie' : 'tv'),
         }))
@@ -54,7 +54,7 @@ export default function CastModal({ personId, personName, profilePath, isOpen, o
 
       setCredits(uniqueCredits);
     } catch (error) {
-      console.error('Failed to load person data:', error);
+      logger.error('Failed to load person data:', error);
     } finally {
       setLoading(false);
     }

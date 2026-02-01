@@ -1,4 +1,5 @@
 import { profiles } from './profiles';
+import { logger } from './logger';
 
 export interface WatchProgress {
   id: number;
@@ -49,7 +50,7 @@ export const watchProgress = {
       
       localStorage.setItem(getStorageKey(), JSON.stringify(sorted));
     } catch (error) {
-      console.error('Failed to save watch progress:', error);
+      logger.error('Failed to save watch progress:', error);
     }
   },
 
@@ -62,7 +63,7 @@ export const watchProgress = {
       if (!stored) return [];
       return JSON.parse(stored);
     } catch (error) {
-      console.error('Failed to load watch progress:', error);
+      logger.error('Failed to load watch progress:', error);
       return [];
     }
   },
@@ -109,7 +110,7 @@ export const watchProgress = {
       });
       localStorage.setItem(getStorageKey(), JSON.stringify(filtered));
     } catch (error) {
-      console.error('Failed to remove watch progress:', error);
+      logger.error('Failed to remove watch progress:', error);
     }
   },
 
@@ -142,7 +143,7 @@ export const watchProgress = {
       
       return data.count || 0;
     } catch (error) {
-      console.error('Failed to get consecutive episode count:', error);
+      logger.error('Failed to get consecutive episode count:', error);
       return 0;
     }
   },
@@ -181,7 +182,7 @@ export const watchProgress = {
       localStorage.setItem(key, JSON.stringify(data));
       return newCount;
     } catch (error) {
-      console.error('Failed to increment consecutive episode count:', error);
+      logger.error('Failed to increment consecutive episode count:', error);
       return 0;
     }
   },
@@ -193,7 +194,7 @@ export const watchProgress = {
       const key = this.getConsecutiveEpisodeKey(showId);
       localStorage.removeItem(key);
     } catch (error) {
-      console.error('Failed to reset consecutive episode count:', error);
+      logger.error('Failed to reset consecutive episode count:', error);
     }
   },
 
@@ -213,7 +214,7 @@ export const watchProgress = {
     try {
       localStorage.removeItem(getStorageKey());
     } catch (error) {
-      console.error('Failed to clear all watch progress:', error);
+      logger.error('Failed to clear all watch progress:', error);
     }
   },
 

@@ -77,9 +77,12 @@ export default function Carousel({ title, items, id }: CarouselProps) {
         ? currentScroll + pageSize
         : Math.max(0, currentScroll - pageSize);
 
-      container.scrollTo({
-        left: newScrollLeft,
-        behavior: 'smooth',
+      // Use requestAnimationFrame for smoother scrolling
+      requestAnimationFrame(() => {
+        container.scrollTo({
+          left: newScrollLeft,
+          behavior: 'smooth',
+        });
       });
     };
 
@@ -93,9 +96,20 @@ export default function Carousel({ title, items, id }: CarouselProps) {
 
   const scroll = (direction: 'left' | 'right') => {
     if (!scrollRef.current) return;
-    const scrollAmount = 600;
-    const newScrollLeft =
-      scrollRef.current.scrollLeft + (direction === 'left' ? -scrollAmount : scrollAmount);
+    
+    // Use pageSize if available for more accurate scrolling, otherwise use a calculated amount
+    const scrollAmount = pageSize > 0 ? pageSize : 600;
+    const currentScroll = scrollRef.current.scrollLeft;
+    const containerWidth = scrollRef.current.clientWidth;
+    const maxScroll = scrollRef.current.scrollWidth - containerWidth;
+    
+    let newScrollLeft: number;
+    if (direction === 'left') {
+      newScrollLeft = Math.max(0, currentScroll - scrollAmount);
+    } else {
+      newScrollLeft = Math.min(maxScroll, currentScroll + scrollAmount);
+    }
+    
     scrollRef.current.scrollTo({
       left: newScrollLeft,
       behavior: 'smooth',
@@ -133,7 +147,8 @@ export default function Carousel({ title, items, id }: CarouselProps) {
         <button
           onClick={() => scroll('left')}
           className="absolute left-2 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-netflix-dark/80 backdrop-blur-sm border border-netflix-gray/30 flex items-center justify-center opacity-40 group-hover:opacity-100 hover:bg-netflix-red hover:border-netflix-red hover:scale-110 transition-all duration-300 shadow-lg"
-          aria-label="Scroll left"
+          aria-label={`Scroll ${title} carousel left`}
+          aria-controls={id || `carousel-${title}`}
         >
           <svg
             className="w-6 h-6 text-white"
@@ -154,7 +169,8 @@ export default function Carousel({ title, items, id }: CarouselProps) {
         <button
           onClick={() => scroll('right')}
           className="absolute right-2 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-netflix-dark/80 backdrop-blur-sm border border-netflix-gray/30 flex items-center justify-center opacity-40 group-hover:opacity-100 hover:bg-netflix-red hover:border-netflix-red hover:scale-110 transition-all duration-300 shadow-lg"
-          aria-label="Scroll right"
+          aria-label={`Scroll ${title} carousel right`}
+          aria-controls={id || `carousel-${title}`}
         >
           <svg
             className="w-6 h-6 text-white"
@@ -174,11 +190,18 @@ export default function Carousel({ title, items, id }: CarouselProps) {
         {/* Scrollable Container */}
         <div
           ref={scrollRef}
+          id={id || `carousel-${title}`}
+          role="region"
+          aria-label={`${title} carousel`}
+          aria-live="polite"
           className="flex items-start gap-4 overflow-x-auto carousel-container scroll-smooth pb-4"
           style={{ 
             scrollbarWidth: 'none', 
             msOverflowStyle: 'none',
-          }}
+            scrollBehavior: 'smooth',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorX: 'contain',
+          } as React.CSSProperties}
           onTouchStart={(e) => {
             const touch = e.touches[0];
             if (touch) {

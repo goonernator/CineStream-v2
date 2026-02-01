@@ -1,5 +1,7 @@
 import axios, { AxiosRequestConfig } from 'axios';
-import type { Movie, TVShow, TMDBResponse, Video, AccountDetails, SessionData, RequestToken, Genre, DiscoverFilters, PaginatedResponse } from './types';
+import { logger } from './logger';
+import { retryWithBackoff } from './retry';
+import type { Movie, TVShow, TMDBResponse, Video, AccountDetails, SessionData, RequestToken, Genre, DiscoverFilters, PaginatedResponse, CastMember, PersonCredit, Episode, Person } from './types';
 
 const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY || '111909b8747aeff1169944069465906c';
 const TMDB_BASE_URL = process.env.NEXT_PUBLIC_TMDB_BASE_URL || 'https://api.themoviedb.org/3';
@@ -28,7 +30,7 @@ async function processQueue() {
   isProcessing = false;
 }
 
-function getCacheKey(url: string, params?: any): string {
+function getCacheKey(url: string, params?: Record<string, unknown>): string {
   return `${url}:${JSON.stringify(params || {})}`;
 }
 
@@ -45,7 +47,7 @@ function setCache(key: string, data: any) {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
-// Rate-limited API wrapper
+// Rate-limited API wrapper with retry
 async function rateLimitedGet<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
   const cacheKey = getCacheKey(url, config?.params);
   const cached = getFromCache<T>(cacheKey);
@@ -54,7 +56,31 @@ async function rateLimitedGet<T>(url: string, config?: AxiosRequestConfig): Prom
   return new Promise((resolve, reject) => {
     requestQueue.push(async () => {
       try {
-        const response = await api.get<T>(url, config);
+        const response = await retryWithBackoff(
+          async () => {
+            const res = await api.get<T>(url, config);
+            return res;
+          },
+          {
+            maxRetries: 3,
+            initialDelay: 1000,
+            retryable: (error) => {
+              // Retry on network errors and 5xx server errors
+              if (axios.isAxiosError(error)) {
+                const status = error.response?.status;
+                // Retry on 5xx errors, 429 (rate limit), and network errors
+                return !status || status >= 500 || status === 429;
+              }
+              // Retry on other network errors
+              return error instanceof Error && (
+                error.message.includes('network') ||
+                error.message.includes('timeout') ||
+                error.message.includes('ECONNREFUSED') ||
+                error.message.includes('ENOTFOUND')
+              );
+            },
+          }
+        );
         setCache(cacheKey, response.data);
         resolve(response.data);
       } catch (error) {
@@ -65,7 +91,7 @@ async function rateLimitedGet<T>(url: string, config?: AxiosRequestConfig): Prom
   });
 }
 
-async function rateLimitedPost<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+async function rateLimitedPost<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
   return new Promise((resolve, reject) => {
     requestQueue.push(async () => {
       try {
@@ -77,7 +103,31 @@ async function rateLimitedPost<T>(url: string, data?: any, config?: AxiosRequest
             ...config?.params,
           },
         };
-        const response = await api.post<T>(url, data, mergedConfig);
+        const response = await retryWithBackoff(
+          async () => {
+            const res = await api.post<T>(url, data, mergedConfig);
+            return res;
+          },
+          {
+            maxRetries: 3,
+            initialDelay: 1000,
+            retryable: (error) => {
+              // Retry on network errors and 5xx server errors
+              if (axios.isAxiosError(error)) {
+                const status = error.response?.status;
+                // Retry on 5xx errors, 429 (rate limit), and network errors
+                return !status || status >= 500 || status === 429;
+              }
+              // Retry on other network errors
+              return error instanceof Error && (
+                error.message.includes('network') ||
+                error.message.includes('timeout') ||
+                error.message.includes('ECONNREFUSED') ||
+                error.message.includes('ENOTFOUND')
+              );
+            },
+          }
+        );
         resolve(response.data);
       } catch (error) {
         reject(error);
@@ -307,14 +357,14 @@ export const tmdb = {
   },
 
   // Get cast for movie or TV show
-  async getCast(id: number, type: 'movie' | 'tv'): Promise<any[]> {
-    const response = await api.get<{ cast: any[] }>(`/${type}/${id}/credits`);
+  async getCast(id: number, type: 'movie' | 'tv'): Promise<CastMember[]> {
+    const response = await api.get<{ cast: CastMember[] }>(`/${type}/${id}/credits`);
     return response.data.cast;
   },
 
   // Get season details (episodes)
-  async getSeasonDetails(tvId: number, seasonNumber: number): Promise<{ episodes: any[] }> {
-    const response = await api.get(`/tv/${tvId}/season/${seasonNumber}`);
+  async getSeasonDetails(tvId: number, seasonNumber: number): Promise<{ episodes: Episode[] }> {
+    const response = await api.get<{ episodes: Episode[] }>(`/tv/${tvId}/season/${seasonNumber}`);
     return response.data;
   },
 
@@ -474,7 +524,7 @@ export const tmdb = {
           return await this.getTVRecommendations(item.id);
         }
       } catch (error) {
-        console.error(`Failed to get recommendations for ${item.type} ${item.id}:`, error);
+        logger.error(`Failed to get recommendations for ${item.type} ${item.id}:`, error);
         return [];
       }
     });
@@ -569,8 +619,8 @@ export const tmdb = {
   },
 
   // Get person's combined movie and TV credits
-  async getPersonCredits(personId: number): Promise<{ cast: any[]; crew: any[] }> {
-    const response = await api.get<{ cast: any[]; crew: any[] }>(`/person/${personId}/combined_credits`);
+  async getPersonCredits(personId: number): Promise<{ cast: PersonCredit[]; crew: PersonCredit[] }> {
+    const response = await api.get<{ cast: PersonCredit[]; crew: PersonCredit[] }>(`/person/${personId}/combined_credits`);
     return response.data;
   },
 

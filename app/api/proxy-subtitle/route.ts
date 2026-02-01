@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
+import { fetchWithRetry } from '@/lib/retry';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -9,17 +11,41 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Fetch the subtitle file
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/vtt, text/plain, */*',
-        'Referer': 'https://rivestream.org/',
+    // Fetch the subtitle file with retry
+    const response = await fetchWithRetry(
+      url,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/vtt, text/plain, */*',
+          'Referer': 'https://rivestream.org/',
+        },
       },
-    });
+      {
+        maxRetries: 2,
+        initialDelay: 500,
+        retryable: (error) => {
+          // Retry on network errors and 5xx errors, but not on 4xx (except 429)
+          if (error instanceof Error && error.message.includes('Server error: 4')) {
+            const statusMatch = error.message.match(/Server error: (\d+)/);
+            if (statusMatch && statusMatch[1] !== '429') {
+              return false; // Don't retry on 4xx errors except 429
+            }
+          }
+          return error instanceof Error && (
+            error.message.includes('fetch') ||
+            error.message.includes('network') ||
+            error.message.includes('ECONNREFUSED') ||
+            error.message.includes('ENOTFOUND') ||
+            error.message.includes('Server error: 5') ||
+            error.message.includes('Server error: 429')
+          );
+        },
+      }
+    );
 
     if (!response.ok) {
-      console.error(`Failed to fetch subtitle: ${response.status} ${response.statusText}`);
+      logger.error(`Failed to fetch subtitle: ${response.status} ${response.statusText}`);
       return NextResponse.json(
         { error: `Failed to fetch subtitle: ${response.statusText}` },
         { status: response.status }
@@ -40,7 +66,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error proxying subtitle:', error);
+    logger.error('Error proxying subtitle:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

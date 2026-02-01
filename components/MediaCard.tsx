@@ -116,7 +116,7 @@ export default function MediaCard({
           const favorited = await tmdb.checkFavoritesStatus(authState.sessionId, authState.accountId, item.id, isMovie ? 'movie' : 'tv');
           setIsFavorited(favorited);
         } catch (error) {
-          console.error('Failed to load status:', error);
+          logger.error('Failed to load status:', error);
         }
       }
     };
@@ -209,7 +209,7 @@ export default function MediaCard({
         newState ? `Added "${title}" to watchlist` : `Removed "${title}" from watchlist`
       );
     } catch (error) {
-      console.error('Failed to update watchlist:', error);
+      logger.error('Failed to update watchlist:', error);
       toast.error('Failed to update watchlist. Please try again.');
     } finally {
       setIsUpdating(false);
@@ -244,7 +244,7 @@ export default function MediaCard({
         newState ? `Added "${title}" to favorites` : `Removed "${title}" from favorites`
       );
     } catch (error) {
-      console.error('Failed to update favorites:', error);
+      logger.error('Failed to update favorites:', error);
       toast.error('Failed to update favorites. Please try again.');
     } finally {
       setIsUpdating(false);
@@ -259,7 +259,7 @@ export default function MediaCard({
       await navigator.clipboard.writeText(url);
       toast.success('Link copied to clipboard!');
     } catch (error) {
-      console.error('Failed to copy link:', error);
+      logger.error('Failed to copy link:', error);
       toast.error('Failed to copy link');
     }
   };
@@ -348,6 +348,7 @@ export default function MediaCard({
               <button
                 onClick={handlePlayClick}
                 className="w-14 h-14 rounded-full bg-white/90 hover:bg-white flex items-center justify-center transform scale-75 group-hover/card:scale-100 transition-all duration-300 shadow-xl hover:shadow-2xl"
+                aria-label={`Play ${title}`}
               >
                 <PlayIcon className="w-7 h-7 text-netflix-dark ml-1" />
               </button>
@@ -410,6 +411,7 @@ export default function MediaCard({
                 setIsFlipped(false);
               }}
               className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors"
+              aria-label="Close details"
             >
               <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -439,6 +441,7 @@ export default function MediaCard({
               <button
                 onClick={handlePlayClick}
                 className="flex-1 h-8 bg-netflix-red hover:bg-netflix-red/80 text-white text-xs font-semibold rounded flex items-center justify-center gap-1 transition-colors"
+                aria-label={`Play ${title}`}
               >
                 <PlayIcon className="w-3.5 h-3.5" />
                 Play
@@ -452,6 +455,7 @@ export default function MediaCard({
                     : 'bg-netflix-gray/20 text-netflix-light hover:bg-netflix-gray/30'
                 } ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}`}
                 title={isWatchlisted ? 'Remove from Watchlist' : 'Add to Watchlist'}
+                aria-label={isWatchlisted ? `Remove ${title} from watchlist` : `Add ${title} to watchlist`}
               >
                 <svg viewBox="0 0 24 24" fill={isWatchlisted ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className={`w-4 h-4 ${isUpdating ? 'animate-pulse' : ''}`}>
                   <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
@@ -466,6 +470,7 @@ export default function MediaCard({
                     : 'bg-netflix-gray/20 text-netflix-light hover:bg-netflix-gray/30'
                 } ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}`}
                 title={isFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
+                aria-label={isFavorited ? `Remove ${title} from favorites` : `Add ${title} to favorites`}
               >
                 <svg viewBox="0 0 24 24" fill={isFavorited ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className={`w-4 h-4 ${isUpdating ? 'animate-pulse' : ''}`}>
                   <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
@@ -475,6 +480,7 @@ export default function MediaCard({
                 onClick={handleShare}
                 className="w-8 h-8 rounded bg-netflix-gray/20 text-netflix-light hover:bg-netflix-gray/30 flex items-center justify-center transition-all"
                 title="Copy Link"
+                aria-label={`Copy link for ${title}`}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
                   <circle cx="18" cy="5" r="3"/>

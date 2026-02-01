@@ -6,6 +6,7 @@ import MediaGrid from '@/components/MediaGrid';
 import { BrowsePageSkeleton } from '@/components/CarouselSkeleton';
 import { tmdb } from '@/lib/tmdb';
 import { filterValidMedia } from '@/lib/mediaFilter';
+import { logger } from '@/lib/logger';
 import type { Movie, Genre, DiscoverFilters } from '@/lib/types';
 
 export default function BrowseMoviesPage() {
@@ -74,7 +75,7 @@ export default function BrowseMoviesPage() {
       setTotalPages(result.total_pages);
       setPage(currentPage);
     } catch (error) {
-      console.error('Failed to load movies:', error);
+      logger.error('Failed to load movies:', error);
     } finally {
       setLoading(false);
       setLoadingMore(false);

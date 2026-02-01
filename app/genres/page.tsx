@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/Skeleton';
 import { tmdb } from '@/lib/tmdb';
+import { logger } from '@/lib/logger';
 import type { Genre } from '@/lib/types';
 
 // Genre card colors
@@ -83,7 +84,7 @@ export default function GenresPage() {
         setMovieGenres(movies);
         setTVGenres(tv);
       } catch (error) {
-        console.error('Failed to load genres:', error);
+        logger.error('Failed to load genres:', error);
       } finally {
         setLoading(false);
       }

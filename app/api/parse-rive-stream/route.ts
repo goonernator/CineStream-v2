@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
+import { fetchWithRetry } from '@/lib/retry';
 
 // Key array extracted from rivestream JS
 const KEY_ARRAY = [
@@ -173,21 +175,42 @@ export async function GET(request: NextRequest): Promise<NextResponse<Rivestream
       );
     }
 
-    // Fetch from rivestream scrapper
+    // Fetch from rivestream scrapper with retry
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
     let response: Response;
     try {
-      response = await fetch(providerUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json',
-          'Origin': 'https://rivestream.org',
-          'Referer': 'https://rivestream.org/',
+      response = await fetchWithRetry(
+        providerUrl,
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Origin': 'https://rivestream.org',
+            'Referer': 'https://rivestream.org/',
+          },
+          signal: controller.signal,
         },
-        signal: controller.signal,
-      });
+        {
+          maxRetries: 2,
+          initialDelay: 1000,
+          retryable: (error) => {
+            // Don't retry on timeout, abort, or 4xx errors (except 429)
+            if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('timeout'))) {
+              return false;
+            }
+            // Retry on network errors and 5xx errors
+            return error instanceof Error && (
+              error.message.includes('fetch') ||
+              error.message.includes('network') ||
+              error.message.includes('ECONNREFUSED') ||
+              error.message.includes('ENOTFOUND') ||
+              error.message.includes('Server error: 5')
+            );
+          },
+        }
+      );
       clearTimeout(timeoutId);
     } catch (error) {
       clearTimeout(timeoutId);
@@ -260,7 +283,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<Rivestream
       }
     );
   } catch (error) {
-    console.error('Error fetching rivestream:', error);
+    logger.error('Error fetching rivestream:', error);
     return NextResponse.json(
       {
         success: false,

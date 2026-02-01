@@ -52,7 +52,7 @@ export default function Hero() {
               });
             }
           } catch (error) {
-            console.error('Failed to load continue watching item:', error);
+            logger.error('Failed to load continue watching item:', error);
           }
         }
 
@@ -73,14 +73,14 @@ export default function Hero() {
             }
           });
         } catch (error) {
-          console.error('Failed to load trending:', error);
+          logger.error('Failed to load trending:', error);
         }
 
         if (items.length > 0) {
           setHeroItems(items);
         }
       } catch (error) {
-        console.error('Failed to load hero:', error);
+        logger.error('Failed to load hero:', error);
       } finally {
         setLoading(false);
       }

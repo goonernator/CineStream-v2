@@ -26,7 +26,7 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
     
     // Start auth immediately (synchronously from user click to avoid popup blockers)
     auth.initiateLogin().catch((error) => {
-      console.error('Auth error:', error);
+      logger.error('Auth error:', error);
       setErrorMessage('Authentication failed. Please try again.');
       setStatus('error');
     });
@@ -89,7 +89,7 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
         handleClose();
       }, 1000);
     } catch (error) {
-      console.error('Error completing auth:', error);
+      logger.error('Error completing auth:', error);
       setErrorMessage('Authentication failed. Make sure you approved the request in the browser, then try again.');
       setStatus('error');
     }

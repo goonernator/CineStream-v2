@@ -1,3 +1,6 @@
+import { fetchWithRetry } from './retry';
+import { logger } from './logger';
+
 export type StreamType = 'direct' | 'iframe';
 
 export type StreamProvider = 'sanction' | 'flowcast';
@@ -57,13 +60,33 @@ export interface StreamAPIResponse {
 }
 
 export const streaming = {
-  // Helper to fetch with timeout
+  // Helper to fetch with timeout and retry
   async fetchWithTimeout(url: string, timeoutMs: number = 60000): Promise<Response> { // 60 seconds default
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
     try {
-      const response = await fetch(url, { signal: controller.signal });
+      const response = await fetchWithRetry(
+        url,
+        { signal: controller.signal },
+        {
+          maxRetries: 2,
+          initialDelay: 1000,
+          retryable: (error) => {
+            // Don't retry on timeout or abort
+            if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('timeout'))) {
+              return false;
+            }
+            // Retry on network errors
+            return error instanceof Error && (
+              error.message.includes('fetch') ||
+              error.message.includes('network') ||
+              error.message.includes('ECONNREFUSED') ||
+              error.message.includes('ENOTFOUND')
+            );
+          },
+        }
+      );
       clearTimeout(timeoutId);
       return response;
     } catch (error) {
@@ -98,7 +121,7 @@ export const streaming = {
           return null;
         }
         const errorText = await response.text();
-        console.warn('tlo.sh TV API error:', response.status, errorText);
+        logger.warn('tlo.sh TV API error:', response.status, errorText);
         throw new Error(`Failed to fetch TV stream: ${response.statusText}`);
       }
       const data = await response.json();
@@ -113,7 +136,7 @@ export const streaming = {
     try {
       const response = await this.fetchWithTimeout(`/api/parse-rive-stream?type=movie&tmdbId=${TMDB_ID}`, 30000); // 30 seconds
       if (!response.ok) {
-        console.warn('Rivestream fetch failed:', response.statusText);
+        logger.warn('Rivestream fetch failed:', response.statusText);
         return { sources: [], captions: [] };
       }
       const data = await response.json();
@@ -148,7 +171,7 @@ export const streaming = {
       
       return { sources, captions };
     } catch (error) {
-      console.warn('Error fetching Rivestream movie data:', error);
+      logger.warn('Error fetching Rivestream movie data:', error);
       return { sources: [], captions: [] };
     }
   },
@@ -158,7 +181,7 @@ export const streaming = {
     try {
       const response = await this.fetchWithTimeout(`/api/parse-rive-stream?type=tv&tmdbId=${TMDB_ID}&season=${SEASON}&episode=${EPISODE}`, 30000); // 30 seconds
       if (!response.ok) {
-        console.warn('Rivestream TV fetch failed:', response.statusText);
+        logger.warn('Rivestream TV fetch failed:', response.statusText);
         return { sources: [], captions: [] };
       }
       const data = await response.json();
@@ -193,7 +216,7 @@ export const streaming = {
       
       return { sources, captions };
     } catch (error) {
-      console.warn('Error fetching Rivestream TV data:', error);
+      logger.warn('Error fetching Rivestream TV data:', error);
       return { sources: [], captions: [] };
     }
   },
@@ -259,18 +282,18 @@ export const streaming = {
       for (const [providerName, providerData] of Object.entries(streamData.streams)) {
         if (providerData && typeof providerData === 'object') {
           // Get quality streams - ONLY use quality streams, NO embed URLs
-          const qualityStreams = providerData.streams?.filter((s: any) => s.type === 'quality') || [];
-          const options = providerData.quality_options || [];
+          const qualityStreams = (providerData.streams as Array<{ url?: string; type?: string; bandwidth?: string; resolution?: string; label?: string }> | undefined)?.filter((s) => s.type === 'quality') || [];
+          const options = (providerData.quality_options as Array<{ url?: string; bandwidth?: string; resolution?: string }> | undefined) || [];
           
           // Combine all available quality streams
           const allQualityStreams = [
-            ...qualityStreams.map((s: any) => ({
+            ...qualityStreams.map((s) => ({
               url: s.url,
               bandwidth: parseInt(s.bandwidth || '0'),
               resolution: s.resolution,
               label: s.label,
             })),
-            ...options.map((o: any) => ({
+            ...options.map((o) => ({
               url: o.url,
               bandwidth: parseInt(o.bandwidth || '0'),
               resolution: o.resolution,
@@ -328,27 +351,27 @@ export const streaming = {
         const error = tloResult.reason;
         // Don't log 404 errors as they're expected when no stream is available
         if (error instanceof Error && !error.message.includes('Not Found')) {
-          console.warn('tlo.sh movie fetch failed:', error.message);
+                logger.warn('tlo.sh movie fetch failed:', error.message);
         }
       }
       if (rivestreamResult.status === 'rejected') {
         const error = rivestreamResult.reason;
         // Don't log 404 errors as they're expected when no stream is available
         if (error instanceof Error && !error.message.includes('Not Found')) {
-          console.warn('Rivestream movie fetch failed:', error.message);
+                logger.warn('Rivestream movie fetch failed:', error.message);
         }
       }
 
       // Combine sources: Flowcast (rivestream) first as priority, then tlo.sh as fallback
       const allSources = [...rivestreamData.sources, ...tloSources];
       
-      console.log(`Movie sources: ${rivestreamData.sources.length} Flowcast, ${tloSources.length} tlo.sh, ${rivestreamData.captions.length} captions`);
+      logger.debug(`Movie sources: ${rivestreamData.sources.length} Flowcast, ${tloSources.length} tlo.sh, ${rivestreamData.captions.length} captions`);
       
       return { sources: allSources, captions: rivestreamData.captions };
-    } catch (error) {
-      console.error('Error fetching movie streams:', error);
-      return { sources: [], captions: [] };
-    }
+          } catch (error) {
+            logger.error('Error fetching movie streams:', error);
+            return { sources: [], captions: [] };
+          }
   },
 
   // Get all available stream sources for a TV show (async)
@@ -369,27 +392,27 @@ export const streaming = {
         const error = tloResult.reason;
         // Don't log 404 errors as they're expected when no stream is available
         if (error instanceof Error && !error.message.includes('Not Found')) {
-          console.warn('tlo.sh TV fetch failed:', error.message);
+          logger.warn('tlo.sh TV fetch failed:', error.message);
         }
       }
       if (rivestreamResult.status === 'rejected') {
         const error = rivestreamResult.reason;
         // Don't log 404 errors as they're expected when no stream is available
         if (error instanceof Error && !error.message.includes('Not Found')) {
-          console.warn('Rivestream TV fetch failed:', error.message);
+                logger.warn('Rivestream TV fetch failed:', error.message);
         }
       }
 
       // Combine sources: Flowcast (rivestream) first as priority, then tlo.sh as fallback
       const allSources = [...rivestreamData.sources, ...tloSources];
       
-      console.log(`TV sources: ${rivestreamData.sources.length} Flowcast, ${tloSources.length} tlo.sh, ${rivestreamData.captions.length} captions`);
+            logger.debug(`TV sources: ${rivestreamData.sources.length} Flowcast, ${tloSources.length} tlo.sh, ${rivestreamData.captions.length} captions`);
       
       return { sources: allSources, captions: rivestreamData.captions };
-    } catch (error) {
-      console.error('Error fetching TV streams:', error);
-      return { sources: [], captions: [] };
-    }
+          } catch (error) {
+            logger.error('Error fetching TV streams:', error);
+            return { sources: [], captions: [] };
+          }
   },
 };
 

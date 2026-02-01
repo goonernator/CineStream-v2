@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useToast } from '@/lib/toast';
 import { watchProgress, type WatchProgress } from '@/lib/watchProgress';
 import { TMDB_IMAGE_BASE, tmdb } from '@/lib/tmdb';
+import { logger } from '@/lib/logger';
 
 // Extended watch progress with fetched images
 interface HistoryItemWithImages extends WatchProgress {
@@ -451,7 +452,7 @@ export default function HistoryPage() {
               };
             }
           } catch (error) {
-            console.error(`Failed to fetch images for ${item.id}:`, error);
+            logger.error(`Failed to fetch images for ${item.id}:`, error);
             return item;
           }
         })
@@ -459,7 +460,7 @@ export default function HistoryPage() {
       
       setHistory(itemsWithImages);
     } catch (error) {
-      console.error('Failed to load history:', error);
+      logger.error('Failed to load history:', error);
       setHistory(watchProgress.getAllProgress());
     } finally {
       setLoading(false);

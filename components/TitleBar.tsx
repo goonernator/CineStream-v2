@@ -236,6 +236,9 @@ export default function TitleBar() {
                         : 'text-netflix-gray hover:text-netflix-light hover:bg-netflix-red/20'
                     }`}
                     data-tour={item.hasMenu === 'browse' ? 'browse' : item.hasMenu === 'genres' ? 'genres' : 'lists'}
+                    aria-label={`${item.label} menu`}
+                    aria-expanded={activeMenu === item.hasMenu}
+                    aria-haspopup="true"
                   >
                     {item.label}
                     <svg
@@ -382,6 +385,7 @@ export default function TitleBar() {
             className="p-2 text-netflix-gray hover:text-netflix-light hover:bg-netflix-red/20 rounded-lg transition-all duration-200"
             title="Search (Ctrl+K)"
             data-tour="search"
+            aria-label="Open search"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -428,6 +432,7 @@ export default function TitleBar() {
                 onClick={handleMinimize}
                 className="title-bar-button w-12 h-10 flex items-center justify-center hover:bg-netflix-bg transition-colors text-netflix-gray hover:text-netflix-light"
                 title="Minimize"
+                aria-label="Minimize window"
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <rect x="0" y="5" width="12" height="1" fill="currentColor" />
@@ -437,6 +442,7 @@ export default function TitleBar() {
                 onClick={handleMaximize}
                 className="title-bar-button w-12 h-10 flex items-center justify-center hover:bg-netflix-bg transition-colors text-netflix-gray hover:text-netflix-light"
                 title={isMaximized ? 'Restore' : 'Maximize'}
+                aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
               >
                 {isMaximized ? (
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -453,6 +459,7 @@ export default function TitleBar() {
                 onClick={handleClose}
                 className="title-bar-button w-12 h-10 flex items-center justify-center hover:bg-red-600 transition-colors text-netflix-gray hover:text-white"
                 title="Close"
+                aria-label="Close window"
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -465,6 +472,8 @@ export default function TitleBar() {
           <button
             className="md:hidden p-2 text-netflix-gray hover:text-netflix-light hover:bg-netflix-red/20 rounded-lg transition-all duration-200"
             onClick={() => setActiveMenu(activeMenu === 'mobile' ? null : 'mobile')}
+            aria-label="Toggle mobile menu"
+            aria-expanded={activeMenu === 'mobile'}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               {activeMenu === 'mobile' ? (

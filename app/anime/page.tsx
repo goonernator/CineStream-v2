@@ -5,6 +5,7 @@ import Carousel from '@/components/Carousel';
 import CarouselSkeleton from '@/components/CarouselSkeleton';
 import { tmdb } from '@/lib/tmdb';
 import { filterValidMedia } from '@/lib/mediaFilter';
+import { logger } from '@/lib/logger';
 import type { Movie, TVShow, DiscoverFilters } from '@/lib/types';
 
 // Helper function to shuffle array (Fisher-Yates)
@@ -122,7 +123,7 @@ export default function AnimePage() {
         // Shuffle the order of carousels for variety
         setCarousels(shuffleArray(carouselData));
       } catch (error) {
-        console.error('Failed to load anime data:', error);
+        logger.error('Failed to load anime data:', error);
       } finally {
         setLoading(false);
       }

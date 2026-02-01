@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
+import { fetchWithRetry } from '@/lib/retry';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -38,19 +40,40 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch the stream data (JSON response) with timeout
+    // Fetch the stream data (JSON response) with timeout and retry
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
     
     let response: Response;
     try {
-      response = await fetch(streamUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json',
+      response = await fetchWithRetry(
+        streamUrl,
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+          },
+          signal: controller.signal,
         },
-        signal: controller.signal,
-      });
+        {
+          maxRetries: 2,
+          initialDelay: 1000,
+          retryable: (error) => {
+            // Don't retry on timeout, abort, or 4xx errors (except 429)
+            if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('timeout'))) {
+              return false;
+            }
+            // Retry on network errors and 5xx errors
+            return error instanceof Error && (
+              error.message.includes('fetch') ||
+              error.message.includes('network') ||
+              error.message.includes('ECONNREFUSED') ||
+              error.message.includes('ENOTFOUND') ||
+              error.message.includes('Server error: 5')
+            );
+          },
+        }
+      );
       clearTimeout(timeoutId);
     } catch (error) {
       clearTimeout(timeoutId);
@@ -83,7 +106,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching stream:', error);
+    logger.error('Error fetching stream:', error);
     return NextResponse.json(
       { error: 'Failed to fetch stream', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

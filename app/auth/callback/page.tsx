@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { auth } from '@/lib/auth';
+import { logger } from '@/lib/logger';
 
 function AuthCallbackContent() {
   const searchParams = useSearchParams();
@@ -39,7 +40,7 @@ function AuthCallbackContent() {
           setStatus('error');
         }
       } catch (error) {
-        console.error('Auth completion failed:', error);
+        logger.error('Auth completion failed:', error);
         setStatus('error');
       }
     };

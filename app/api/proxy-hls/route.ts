@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
+import { fetchWithRetry } from '@/lib/retry';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -16,27 +18,51 @@ export async function GET(request: NextRequest) {
     const urlObj = new URL(url);
     const origin = urlObj.origin;
     
-    // Fetch the HLS content (manifest or segment)
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-        'Accept-Encoding': 'identity',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'cross-site',
-        'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
+    // Fetch the HLS content (manifest or segment) with retry
+    const response = await fetchWithRetry(
+      url,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+          'Accept-Encoding': 'identity',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Connection': 'keep-alive',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'cross-site',
+          'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+          'Sec-Ch-Ua-Mobile': '?0',
+          'Sec-Ch-Ua-Platform': '"Windows"',
+        },
+        // Don't follow redirects automatically for better control
+        redirect: 'follow',
       },
-      // Don't follow redirects automatically for better control
-      redirect: 'follow',
-    });
+      {
+        maxRetries: 2,
+        initialDelay: 500,
+        retryable: (error) => {
+          // Retry on network errors and 5xx errors, but not on 4xx (except 429)
+          if (error instanceof Error && error.message.includes('Server error: 4')) {
+            const statusMatch = error.message.match(/Server error: (\d+)/);
+            if (statusMatch && statusMatch[1] !== '429') {
+              return false; // Don't retry on 4xx errors except 429
+            }
+          }
+          return error instanceof Error && (
+            error.message.includes('fetch') ||
+            error.message.includes('network') ||
+            error.message.includes('ECONNREFUSED') ||
+            error.message.includes('ENOTFOUND') ||
+            error.message.includes('Server error: 5') ||
+            error.message.includes('Server error: 429')
+          );
+        },
+      }
+    );
 
     if (!response.ok) {
-      console.error('HLS proxy fetch failed:', response.status, url);
+      logger.error('HLS proxy fetch failed:', response.status, url);
       return new NextResponse(`Failed to fetch: ${response.statusText}`, {
         status: response.status,
       });
@@ -108,7 +134,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error proxying HLS:', error);
+    logger.error('Error proxying HLS:', error);
     return NextResponse.json(
       { error: 'Failed to proxy HLS', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

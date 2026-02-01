@@ -33,11 +33,11 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, mediaId, 
     setCurrentSourceIndex(prevIndex => {
       const nextIndex = prevIndex + 1;
       if (nextIndex < sources.length) {
-        console.log(`StreamPlayer: Source ${prevIndex + 1}/${sources.length} failed, switching to ${nextIndex + 1}`);
+        logger.debug(`StreamPlayer: Source ${prevIndex + 1}/${sources.length} failed, switching to ${nextIndex + 1}`);
         setHasError(false);
         return nextIndex;
       } else {
-        console.error('StreamPlayer: All sources failed');
+        logger.error('StreamPlayer: All sources failed');
         setHasError(true);
         return prevIndex;
       }
@@ -52,7 +52,7 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, mediaId, 
   // Log current source info
   useEffect(() => {
     if (currentSource) {
-      console.log('StreamPlayer: Current source:', {
+      logger.debug('StreamPlayer: Current source:', {
         index: currentSourceIndex + 1,
         total: sources.length,
         url: currentSource?.url,
