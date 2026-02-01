@@ -150,7 +150,7 @@ export default function NotificationCenter({ isExpanded = false, position = 'top
             isTopNav 
               ? 'absolute right-0 top-full mt-2' 
               : 'fixed z-[200]'
-          } w-[340px] bg-netflix-dark/98 backdrop-blur-xl border border-netflix-gray/20 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 z-50`}
+          } w-[340px] bg-netflix-dark border border-netflix-gray/30 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 z-50`}
           style={!isTopNav ? { 
             left: isExpanded ? '244px' : '68px',
             bottom: position === 'bottom' ? '16px' : 'auto',
@@ -158,7 +158,7 @@ export default function NotificationCenter({ isExpanded = false, position = 'top
           } : undefined}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-netflix-gray/20">
+          <div className="flex items-center justify-between p-4 border-b border-netflix-gray/30 bg-netflix-dark">
             <h3 className="font-semibold text-netflix-light">Notifications</h3>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
@@ -181,14 +181,14 @@ export default function NotificationCenter({ isExpanded = false, position = 'top
           </div>
 
           {/* Notifications List */}
-          <div className="max-h-[400px] overflow-y-auto">
+          <div className="max-h-[400px] overflow-y-auto bg-netflix-dark">
             {notificationList.length === 0 ? (
-              <div className="p-8 text-center">
+              <div className="p-8 text-center bg-netflix-dark">
                 <BellIcon className="w-12 h-12 text-netflix-gray/50 mx-auto mb-3" />
                 <p className="text-sm text-netflix-gray">No notifications yet</p>
               </div>
             ) : (
-              <div className="divide-y divide-netflix-gray/10">
+              <div className="divide-y divide-netflix-gray/20">
                 {notificationList.map((notification) => {
                   const typeConfig = notificationTypes[notification.type];
                   
@@ -196,8 +196,10 @@ export default function NotificationCenter({ isExpanded = false, position = 'top
                     <div
                       key={notification.id}
                       onClick={() => handleNotificationClick(notification)}
-                      className={`p-4 hover:bg-netflix-gray/10 cursor-pointer transition-colors relative group ${
-                        !notification.read ? 'bg-netflix-red/5' : ''
+                      className={`p-4 cursor-pointer transition-colors relative group ${
+                        !notification.read 
+                          ? 'bg-netflix-dark border-l-2 border-netflix-red' 
+                          : 'bg-netflix-bg hover:bg-netflix-dark'
                       }`}
                     >
                       {/* Unread indicator */}

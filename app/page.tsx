@@ -71,7 +71,13 @@ export default function Home() {
               });
               
               // Filter out items without thumbnails or ratings
-              setContinueWatching(filterValidMedia(uniqueDetails));
+              const filteredDetails = filterValidMedia(uniqueDetails);
+              setContinueWatching(filteredDetails);
+              
+              // Check for continue watching notifications (includes new episode checking)
+              if (filteredDetails.length > 0) {
+                notifications.checkContinueWatching(filteredDetails, tmdb);
+              }
             } else {
               setContinueWatching([]);
             }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import MagazineGrid, { MagazineGridSkeleton } from '@/components/MagazineGrid';
+import MediaListCard from '@/components/MediaListCard';
 import { auth } from '@/lib/auth';
 import { tmdb, TMDB_IMAGE_BASE } from '@/lib/tmdb';
 import { useToast } from '@/lib/toast';
@@ -70,6 +70,11 @@ export default function FavoritesPage() {
     const isMovie = 'title' in item;
     const title = isMovie ? (item as Movie).title : (item as TVShow).name;
 
+    // Optimistic update - remove immediately from UI
+    const previousFavorites = [...favorites];
+    setFavorites(prev => prev.filter(f => f.id !== item.id));
+    toast.success(`Removed "${title}" from favorites`);
+
     try {
       await tmdb.addToFavorites(
         authState.sessionId!,
@@ -78,11 +83,12 @@ export default function FavoritesPage() {
         isMovie ? 'movie' : 'tv',
         false
       );
-      setFavorites(prev => prev.filter(f => f.id !== item.id));
-      toast.success(`Removed "${title}" from favorites`);
+      // Success - state already updated
     } catch (error) {
+      // Revert on error
       logger.error('Failed to remove from favorites:', error);
-      toast.error('Failed to remove from favorites');
+      setFavorites(previousFavorites);
+      toast.error(`Failed to remove "${title}" from favorites`);
     }
   };
 
@@ -310,7 +316,22 @@ export default function FavoritesPage() {
 
           {/* Content */}
           {loading ? (
-            <MagazineGridSkeleton count={8} />
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="bg-netflix-dark/50 rounded-xl border border-white/5 overflow-hidden animate-pulse">
+                  <div className="h-40 bg-netflix-gray/20" />
+                  <div className="p-4 space-y-3">
+                    <div className="h-5 w-3/4 bg-netflix-gray/20 rounded" />
+                    <div className="h-4 w-1/2 bg-netflix-gray/20 rounded" />
+                    <div className="flex gap-2 mt-4">
+                      <div className="h-10 flex-1 bg-netflix-gray/20 rounded-lg" />
+                      <div className="h-10 w-10 bg-netflix-gray/20 rounded-lg" />
+                      <div className="h-10 w-10 bg-netflix-gray/20 rounded-lg" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : !isAuthenticated ? (
             <div className="flex flex-col items-center justify-center py-24">
               <div className="relative mb-8">
@@ -379,11 +400,16 @@ export default function FavoritesPage() {
               </button>
             </div>
           ) : (
-            <MagazineGrid
-              items={filteredFavorites}
-              onRemove={handleRemove}
-              listType="favorites"
-            />
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredFavorites.map((item) => (
+                <MediaListCard
+                  key={`${item.id}-${item.media_type || ('title' in item ? 'movie' : 'tv')}`}
+                  item={item}
+                  onRemove={handleRemove}
+                  listType="favorites"
+                />
+              ))}
+            </div>
           )}
         </div>
     </div>

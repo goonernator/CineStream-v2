@@ -11,6 +11,7 @@ import KeyboardShortcuts from '@/components/KeyboardShortcuts';
 import OnboardingTour from '@/components/OnboardingTour';
 import DisableReactDevTools from '@/components/DisableReactDevTools';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import NotificationService from '@/components/NotificationService';
 
 export const metadata: Metadata = {
   title: 'Cinestream',
@@ -42,6 +43,7 @@ export default function RootLayout({
                 </ProfileGuard>
                 <KeyboardShortcuts />
                 <OnboardingTour />
+                <NotificationService />
               </ToastProvider>
             </ProfileProvider>
           </ThemeProvider>
