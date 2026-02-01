@@ -23,8 +23,15 @@ function getStorageKey(): string {
 }
 
 // Helper to check if a similar notification exists within time window
-function hasRecentNotification(type: Notification['type'], itemId?: number, timeWindowMs: number = 60 * 60 * 1000): boolean {
-  const notifications = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem(getStorageKey()) || '[]') : [];
+function hasRecentNotification(
+  type: Notification['type'], 
+  itemId?: number, 
+  timeWindowMs: number = 60 * 60 * 1000,
+  message?: string
+): boolean {
+  if (typeof window === 'undefined') return false;
+  
+  const notifications = JSON.parse(localStorage.getItem(getStorageKey()) || '[]');
   const now = Date.now();
   
   return notifications.some((n: Notification) => {
@@ -33,16 +40,100 @@ function hasRecentNotification(type: Notification['type'], itemId?: number, time
     if (now - n.timestamp > timeWindowMs) return false;
     
     // If itemId is provided, check if notification is for the same item
-    if (itemId !== undefined && n.linkUrl) {
-      const urlMatch = n.linkUrl.match(/\/details\/(\d+)/);
-      if (urlMatch && parseInt(urlMatch[1]) === itemId) {
+    if (itemId !== undefined) {
+      if (n.linkUrl) {
+        const urlMatch = n.linkUrl.match(/\/details\/(\d+)/);
+        if (urlMatch && parseInt(urlMatch[1]) === itemId) {
+          return true;
+        }
+      }
+      // Also check if message contains the item title (for cases without linkUrl)
+      if (message && n.message && message.toLowerCase() === n.message.toLowerCase()) {
         return true;
       }
     }
     
-    // If no itemId, just check type and time window
-    return itemId === undefined;
+    // If message is provided and matches exactly, consider it a duplicate
+    if (message && n.message && message.toLowerCase() === n.message.toLowerCase()) {
+      return true;
+    }
+    
+    // If no itemId and no message, just check type and time window (for general notifications)
+    if (itemId === undefined && !message) {
+      return true;
+    }
+    
+    return false;
   });
+}
+
+// Helper to check if notification content is similar (for better deduplication)
+function isSimilarNotification(newNotif: Omit<Notification, 'id' | 'timestamp' | 'read'>, existing: Notification): boolean {
+  // Same type
+  if (newNotif.type !== existing.type) return false;
+  
+  // Check if linkUrl matches (same item)
+  if (newNotif.linkUrl && existing.linkUrl && newNotif.linkUrl === existing.linkUrl) {
+    return true;
+  }
+  
+  // Check if message is very similar (fuzzy match)
+  if (newNotif.message && existing.message) {
+    const newMsg = newNotif.message.toLowerCase().trim();
+    const existingMsg = existing.message.toLowerCase().trim();
+    
+    // Exact match
+    if (newMsg === existingMsg) return true;
+    
+    // Check if messages are very similar (80% similarity)
+    const similarity = calculateSimilarity(newMsg, existingMsg);
+    if (similarity > 0.8) return true;
+  }
+  
+  return false;
+}
+
+// Simple string similarity calculation (Jaro-Winkler-like)
+function calculateSimilarity(str1: string, str2: string): number {
+  if (str1 === str2) return 1;
+  if (str1.length === 0 || str2.length === 0) return 0;
+  
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+  
+  if (longer.length === 0) return 1;
+  
+  const distance = levenshteinDistance(longer, shorter);
+  return (longer.length - distance) / longer.length;
+}
+
+// Levenshtein distance for string similarity
+function levenshteinDistance(str1: string, str2: string): number {
+  const matrix: number[][] = [];
+  
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+  
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+  
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  
+  return matrix[str2.length][str1.length];
 }
 
 export const notifications = {
@@ -64,8 +155,28 @@ export const notifications = {
     return this.getAll().filter(n => !n.read).length;
   },
 
-  // Add a notification
-  add(notification: Omit<Notification, 'id' | 'timestamp' | 'read'>): Notification {
+  // Add a notification (with duplicate checking)
+  add(notification: Omit<Notification, 'id' | 'timestamp' | 'read'>): Notification | null {
+    const current = this.getAll();
+    const now = Date.now();
+    
+    // Check for duplicates within the last hour
+    const recentWindow = 60 * 60 * 1000; // 1 hour
+    
+    // Check if a similar notification was added recently
+    const isDuplicate = current.some((existing) => {
+      // Check time window
+      if (now - existing.timestamp > recentWindow) return false;
+      
+      // Check if it's similar
+      return isSimilarNotification(notification, existing);
+    });
+    
+    // If duplicate, don't add
+    if (isDuplicate) {
+      return null;
+    }
+    
     const newNotification: Notification = {
       ...notification,
       id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -73,7 +184,6 @@ export const notifications = {
       read: false,
     };
 
-    const current = this.getAll();
     const updated = [newNotification, ...current].slice(0, MAX_NOTIFICATIONS);
     
     if (typeof window !== 'undefined') {
@@ -167,12 +277,17 @@ export const notifications = {
   checkNewRecommendations(currentRecommendations: (Movie | TVShow)[], previousCount: number): void {
     if (currentRecommendations.length > previousCount && previousCount > 0) {
       const newCount = currentRecommendations.length - previousCount;
-      this.add({
-        type: 'recommendation',
-        title: 'New Recommendations Available',
-        message: `We've found ${newCount} new ${newCount === 1 ? 'recommendation' : 'recommendations'} based on your watch history.`,
-        linkUrl: '/',
-      });
+      const message = `We've found ${newCount} new ${newCount === 1 ? 'recommendation' : 'recommendations'} based on your watch history.`;
+      
+      // Check for duplicates before adding
+      if (!hasRecentNotification('recommendation', undefined, 60 * 60 * 1000, message)) {
+        this.add({
+          type: 'recommendation',
+          title: 'New Recommendations Available',
+          message,
+          linkUrl: '/',
+        });
+      }
     }
   },
 

@@ -34,6 +34,10 @@ class NotificationService {
   private prevTrendingIds: Set<number> = new Set();
   private prevLatestReleaseIds: Set<number> = new Set();
   private prevRecommendationsCount = 0;
+  
+  // Cooldown tracking to prevent spam
+  private lastCheckTimes: Map<string, number> = new Map();
+  private readonly MIN_CHECK_INTERVAL = 2 * 60 * 1000; // 2 minutes minimum between checks
 
   constructor(config: Partial<NotificationServiceConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -62,6 +66,14 @@ class NotificationService {
 
   private async checkTrending(): Promise<void> {
     if (!this.isWindowFocused) return;
+    
+    // Cooldown check
+    const lastCheck = this.lastCheckTimes.get('trending') || 0;
+    const now = Date.now();
+    if (now - lastCheck < this.MIN_CHECK_INTERVAL) {
+      return; // Too soon since last check
+    }
+    this.lastCheckTimes.set('trending', now);
 
     try {
       const trending = await tmdb.getTrendingAll('day');
@@ -75,6 +87,14 @@ class NotificationService {
 
   private async checkWhatsNew(): Promise<void> {
     if (!this.isWindowFocused) return;
+    
+    // Cooldown check
+    const lastCheck = this.lastCheckTimes.get('whatsNew') || 0;
+    const now = Date.now();
+    if (now - lastCheck < this.MIN_CHECK_INTERVAL) {
+      return; // Too soon since last check
+    }
+    this.lastCheckTimes.set('whatsNew', now);
 
     try {
       const latest = await tmdb.getLatestReleases();
@@ -88,6 +108,14 @@ class NotificationService {
 
   private async checkRecommendations(): Promise<void> {
     if (!this.isWindowFocused) return;
+    
+    // Cooldown check
+    const lastCheck = this.lastCheckTimes.get('recommendations') || 0;
+    const now = Date.now();
+    if (now - lastCheck < this.MIN_CHECK_INTERVAL) {
+      return; // Too soon since last check
+    }
+    this.lastCheckTimes.set('recommendations', now);
 
     try {
       const watchHistory = watchProgress.getAllProgress();
@@ -123,6 +151,14 @@ class NotificationService {
 
   private async checkContinueWatching(): Promise<void> {
     if (!this.isWindowFocused) return;
+    
+    // Cooldown check
+    const lastCheck = this.lastCheckTimes.get('continueWatching') || 0;
+    const now = Date.now();
+    if (now - lastCheck < this.MIN_CHECK_INTERVAL) {
+      return; // Too soon since last check
+    }
+    this.lastCheckTimes.set('continueWatching', now);
 
     try {
       const continueItems = watchProgress.getContinueWatching();
@@ -156,6 +192,14 @@ class NotificationService {
 
   private async checkNewEpisodes(): Promise<void> {
     if (!this.isWindowFocused) return;
+    
+    // Cooldown check
+    const lastCheck = this.lastCheckTimes.get('newEpisodes') || 0;
+    const now = Date.now();
+    if (now - lastCheck < this.MIN_CHECK_INTERVAL) {
+      return; // Too soon since last check
+    }
+    this.lastCheckTimes.set('newEpisodes', now);
 
     try {
       // This requires auth state, so we'll skip if not available

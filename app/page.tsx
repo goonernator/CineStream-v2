@@ -31,6 +31,7 @@ export default function Home() {
   const prevRecommendationsCountRef = useRef(0);
   const prevTrendingIdsRef = useRef<Set<number>>(new Set());
   const prevLatestReleaseIdsRef = useRef<Set<number>>(new Set());
+  const notificationCooldownRef = useRef<number>(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -75,7 +76,10 @@ export default function Home() {
               setContinueWatching(filteredDetails);
               
               // Check for continue watching notifications (includes new episode checking)
-              if (filteredDetails.length > 0) {
+              // Only check if enough time has passed since last check (cooldown)
+              const now = Date.now();
+              if (filteredDetails.length > 0 && now - notificationCooldownRef.current > 5 * 60 * 1000) {
+                notificationCooldownRef.current = now;
                 notifications.checkContinueWatching(filteredDetails, tmdb);
               }
             } else {
@@ -113,15 +117,21 @@ export default function Home() {
         setTrendingToday(filterValidMedia(trending));
         setUpcomingMovies(filterValidMedia(upcoming));
         
-        // Check for trending updates
-        if (trending.length > 0) {
-          prevTrendingIdsRef.current = notifications.checkTrendingUpdates(trending, prevTrendingIdsRef.current);
-        }
-        
-        // Check for what's new (latest releases)
-        if (latest.length > 0) {
-          prevLatestReleaseIdsRef.current = notifications.checkWhatsNew(latest, prevLatestReleaseIdsRef.current);
-        }
+            // Check for trending updates (only if we have previous state to compare)
+            if (trending.length > 0 && prevTrendingIdsRef.current.size > 0) {
+              prevTrendingIdsRef.current = notifications.checkTrendingUpdates(trending, prevTrendingIdsRef.current);
+            } else if (trending.length > 0) {
+              // Initialize previous state without sending notification
+              prevTrendingIdsRef.current = new Set(trending.map(item => item.id));
+            }
+            
+            // Check for what's new (latest releases) (only if we have previous state to compare)
+            if (latest.length > 0 && prevLatestReleaseIdsRef.current.size > 0) {
+              prevLatestReleaseIdsRef.current = notifications.checkWhatsNew(latest, prevLatestReleaseIdsRef.current);
+            } else if (latest.length > 0) {
+              // Initialize previous state without sending notification
+              prevLatestReleaseIdsRef.current = new Set(latest.map(item => item.id));
+            }
       } catch (error) {
         logger.error('Failed to load data:', error);
       } finally {
