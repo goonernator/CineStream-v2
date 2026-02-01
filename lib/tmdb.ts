@@ -498,56 +498,272 @@ export const tmdb = {
     return response.data.results;
   },
 
-  // Get personalized recommendations based on watch history
-  async getPersonalizedRecommendations(watchHistory: Array<{ id: number; type: 'movie' | 'tv' }>): Promise<(Movie | TVShow)[]> {
+  // Get personalized recommendations based on comprehensive user data
+  async getPersonalizedRecommendations(
+    watchHistory: Array<{ id: number; type: 'movie' | 'tv' }>,
+    options?: {
+      watchHistoryDetails?: (Movie | TVShow)[];
+      favorites?: (Movie | TVShow)[];
+      watchlist?: (Movie | TVShow)[];
+      sessionId?: string;
+      accountId?: number;
+    }
+  ): Promise<(Movie | TVShow)[]> {
+    // Import recommendation engine dynamically to avoid circular dependencies
+    const { analyzeUserPreferences, scoreRecommendation, filterAndSortRecommendations } = await import('./recommendationEngine');
+
+    // Fallback for no watch history
     if (watchHistory.length === 0) {
-      // If no watch history, return trending items as fallback
       return this.getTrendingAll('day');
     }
 
-    // Create cache key from watch history (use first 3 items for consistency)
-    const recentItems = watchHistory.slice(0, 3);
-    const cacheKey = `recommendations:${recentItems.map(i => `${i.type}-${i.id}`).join(',')}`;
+    // Get favorites and watchlist if available
+    let favorites: (Movie | TVShow)[] = options?.favorites || [];
+    let watchlist: (Movie | TVShow)[] = options?.watchlist || [];
+
+    // Try to fetch favorites/watchlist if session info provided but not passed
+    if (options?.sessionId && options?.accountId && favorites.length === 0 && watchlist.length === 0) {
+      try {
+        [favorites, watchlist] = await Promise.all([
+          this.getFavorites(options.sessionId, options.accountId).catch(() => []),
+          this.getWatchlist(options.sessionId, options.accountId).catch(() => []),
+        ]);
+      } catch (error) {
+        logger.error('Failed to fetch favorites/watchlist for recommendations:', error);
+      }
+    }
+
+    // Get watch history details if not provided
+    let watchHistoryDetails: (Movie | TVShow)[] = options?.watchHistoryDetails || [];
+    if (watchHistoryDetails.length === 0) {
+      try {
+        const detailsPromises = watchHistory.slice(0, 10).map(async (item) => {
+          try {
+            if (item.type === 'movie') {
+              return await this.getMovieDetails(item.id);
+            } else {
+              return await this.getTVDetails(item.id);
+            }
+          } catch (error) {
+            logger.error(`Failed to get details for ${item.type} ${item.id}:`, error);
+            return null;
+          }
+        });
+        const details = await Promise.all(detailsPromises);
+        watchHistoryDetails = details.filter((d): d is Movie | TVShow => d !== null);
+      } catch (error) {
+        logger.error('Failed to fetch watch history details:', error);
+      }
+    }
+
+    // Analyze user preferences
+    const { watchProgress } = await import('./watchProgress');
+    const fullWatchHistory = watchProgress.getAllProgress();
+    const preferences = analyzeUserPreferences(fullWatchHistory, watchHistoryDetails, favorites, watchlist);
+
+    // Create cache key
+    const cacheKey = `recommendations:${watchHistory.slice(0, 5).map(i => `${i.type}-${i.id}`).join(',')}:${favorites.length}:${watchlist.length}`;
     
-    // Check cache first (5 minute cache for recommendations)
+    // Check cache (10 minute cache for recommendations)
     const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
+    if (cached && Date.now() - cached.timestamp < 10 * 60 * 1000) {
       return cached.data;
     }
 
-    // Get recommendations from the most recent 3 items to avoid too many API calls
-    const recommendationPromises = recentItems.map(async (item) => {
+    // Strategy 1: Genre-Based Recommendations (40% weight)
+    const genreBasedRecs: (Movie | TVShow)[] = [];
+    if (preferences.favoriteGenres.length > 0) {
       try {
-        if (item.type === 'movie') {
-          return await this.getMovieRecommendations(item.id);
-        } else {
-          return await this.getTVRecommendations(item.id);
-        }
-      } catch (error) {
-        logger.error(`Failed to get recommendations for ${item.type} ${item.id}:`, error);
-        return [];
-      }
-    });
+        const topGenres = preferences.favoriteGenres.slice(0, 3).map(g => g.genreId);
+        const genreIds = topGenres.join(',');
 
-    const recommendationArrays = await Promise.all(recommendationPromises);
-    
-    // Flatten and deduplicate by ID
-    const allRecommendations: (Movie | TVShow)[] = [];
-    const seenIds = new Set<number>();
-    
-    for (const recommendations of recommendationArrays) {
-      for (const item of recommendations) {
-        if (!seenIds.has(item.id)) {
-          seenIds.add(item.id);
-          allRecommendations.push(item);
+        // Get genre-based recommendations for movies and TV
+        const [movieRecs, tvRecs] = await Promise.all([
+          preferences.preferredType !== 'tv'
+            ? this.discoverMovies({
+                with_genres: genreIds,
+                'vote_average.gte': preferences.minRating,
+                sort_by: 'popularity.desc',
+                page: 1,
+              }).then(r => r.results).catch(() => [])
+            : Promise.resolve([]),
+          preferences.preferredType !== 'movie'
+            ? this.discoverTV({
+                with_genres: genreIds,
+                'vote_average.gte': preferences.minRating,
+                sort_by: 'popularity.desc',
+                page: 1,
+              }).then(r => r.results).catch(() => [])
+            : Promise.resolve([]),
+        ]);
+
+        genreBasedRecs.push(...movieRecs, ...tvRecs);
+      } catch (error) {
+        logger.error('Failed to get genre-based recommendations:', error);
+      }
+    }
+
+    // Strategy 2: Similarity-Based Recommendations (35% weight)
+    const similarityRecs: (Movie | TVShow)[] = [];
+    try {
+      // Get similar/recommended content for highly-rated or completed items
+      const topWatchedItems = watchHistoryDetails
+        .slice(0, 5)
+        .filter(item => {
+          // Prioritize items with high ratings or from favorites
+          const isFavorite = favorites.some(f => f.id === item.id);
+          const hasHighRating = item.vote_average >= 7.0;
+          return isFavorite || hasHighRating;
+        });
+
+      const similarityPromises = topWatchedItems.map(async (item) => {
+        try {
+          if ('title' in item) {
+            // Movie
+            const [recommendations, similar] = await Promise.all([
+              this.getMovieRecommendations(item.id).catch(() => []),
+              this.getSimilarMovies(item.id).catch(() => []),
+            ]);
+            return [...recommendations, ...similar];
+          } else {
+            // TV Show
+            const [recommendations, similar] = await Promise.all([
+              this.getTVRecommendations(item.id).catch(() => []),
+              this.getSimilarTV(item.id).catch(() => []),
+            ]);
+            return [...recommendations, ...similar];
+          }
+        } catch (error) {
+          logger.error(`Failed to get similar content for ${item.id}:`, error);
+          return [];
+        }
+      });
+
+      const similarityArrays = await Promise.all(similarityPromises);
+      similarityRecs.push(...similarityArrays.flat());
+    } catch (error) {
+      logger.error('Failed to get similarity-based recommendations:', error);
+    }
+
+    // Strategy 3: Discover-Based Recommendations (25% weight)
+    const discoverRecs: (Movie | TVShow)[] = [];
+    try {
+      const discoverFilters = {
+        'vote_average.gte': preferences.minRating,
+        sort_by: 'popularity.desc' as const,
+        page: 1,
+      };
+
+      // Add genre filter if available
+      if (preferences.favoriteGenres.length > 0) {
+        const topGenreIds = preferences.favoriteGenres.slice(0, 2).map(g => g.genreId).join(',');
+        discoverFilters.with_genres = topGenreIds;
+      }
+
+      // Add year filter if available
+      if (preferences.preferredYears) {
+        if (preferences.preferredYears.min) {
+          discoverFilters['primary_release_date.gte'] = `${preferences.preferredYears.min}-01-01`;
+          discoverFilters['first_air_date.gte'] = `${preferences.preferredYears.min}-01-01`;
+        }
+        if (preferences.preferredYears.max) {
+          discoverFilters['primary_release_date.lte'] = `${preferences.preferredYears.max}-12-31`;
+          discoverFilters['first_air_date.lte'] = `${preferences.preferredYears.max}-12-31`;
+        }
+      }
+
+      const [movieDiscover, tvDiscover] = await Promise.all([
+        preferences.preferredType !== 'tv'
+          ? this.discoverMovies(discoverFilters).then(r => r.results).catch(() => [])
+          : Promise.resolve([]),
+        preferences.preferredType !== 'movie'
+          ? this.discoverTV(discoverFilters).then(r => r.results).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+
+      discoverRecs.push(...movieDiscover, ...tvDiscover);
+    } catch (error) {
+      logger.error('Failed to get discover-based recommendations:', error);
+    }
+
+    // Score all recommendations
+    const allScoredRecs = [
+      ...genreBasedRecs.map(item => scoreRecommendation(item, preferences, 'genre')),
+      ...similarityRecs.map(item => scoreRecommendation(item, preferences, 'similarity')),
+      ...discoverRecs.map(item => scoreRecommendation(item, preferences, 'discover')),
+    ];
+
+    // Filter, sort, and return top recommendations
+    let result = filterAndSortRecommendations(allScoredRecs, 30);
+
+    // Fallback strategies if we don't have enough recommendations
+    if (result.length < 10) {
+      logger.warn('Not enough personalized recommendations, using fallback strategies');
+      
+      // Fallback 1: If minimal watch history (< 3 items), use trending + popular
+      if (watchHistory.length < 3 || watchHistoryDetails.length < 3) {
+        try {
+          const [trending, popularMovies, popularTV] = await Promise.all([
+            this.getTrendingAll('day').catch(() => []),
+            preferences.preferredType !== 'tv' ? this.getPopularMovies().catch(() => []) : Promise.resolve([]),
+            preferences.preferredType !== 'movie' ? this.getPopularTV().catch(() => []) : Promise.resolve([]),
+          ]);
+          
+          const fallbackItems = [...trending, ...popularMovies, ...popularTV]
+            .filter(item => !preferences.watchedItemIds.has(item.id));
+          
+          // Score fallback items
+          const fallbackScored = fallbackItems.map(item => 
+            scoreRecommendation(item, preferences, 'discover')
+          );
+          
+          const fallbackResults = filterAndSortRecommendations(fallbackScored, 20);
+          result = [...result, ...fallbackResults].slice(0, 30);
+        } catch (error) {
+          logger.error('Failed to get fallback recommendations:', error);
+        }
+      }
+      
+      // Fallback 2: If still not enough, use basic recommendations from watched items
+      if (result.length < 15 && watchHistoryDetails.length > 0) {
+        try {
+          const basicRecPromises = watchHistoryDetails.slice(0, 3).map(async (item) => {
+            try {
+              if ('title' in item) {
+                return await this.getMovieRecommendations(item.id).catch(() => []);
+              } else {
+                return await this.getTVRecommendations(item.id).catch(() => []);
+              }
+            } catch {
+              return [];
+            }
+          });
+          
+          const basicRecs = (await Promise.all(basicRecPromises)).flat()
+            .filter(item => !preferences.watchedItemIds.has(item.id));
+          
+          const basicScored = basicRecs.map(item => 
+            scoreRecommendation(item, preferences, 'similarity')
+          );
+          
+          const basicResults = filterAndSortRecommendations(basicScored, 15);
+          
+          // Merge without duplicates
+          const existingIds = new Set(result.map(r => r.id));
+          const newItems = basicResults.filter(r => !existingIds.has(r.id));
+          result = [...result, ...newItems].slice(0, 30);
+        } catch (error) {
+          logger.error('Failed to get basic recommendations:', error);
         }
       }
     }
 
-    // Shuffle and return top 20 recommendations
-    const shuffled = allRecommendations.sort(() => Math.random() - 0.5);
-    const result = shuffled.slice(0, 20);
-    
+    // Final fallback: If still empty, return trending
+    if (result.length === 0) {
+      logger.warn('All recommendation strategies failed, returning trending content');
+      return this.getTrendingAll('day');
+    }
+
     // Cache the result
     cache.set(cacheKey, { data: result, timestamp: Date.now() });
     

@@ -9,6 +9,7 @@ import { watchProgress } from '@/lib/watchProgress';
 import { notifications } from '@/lib/notifications';
 import { filterValidMedia } from '@/lib/mediaFilter';
 import { logger } from '@/lib/logger';
+import { auth } from '@/lib/auth';
 import type { Movie, TVShow } from '@/lib/types';
 
 export default function Home() {
@@ -169,8 +170,48 @@ export default function Home() {
           setRecommendationsLoading(false);
           return;
         }
+
+        // Load watch history details for better recommendations
+        const watchHistoryDetailsPromises = uniqueHistoryItems.map(async (item) => {
+          try {
+            if (item.type === 'movie') {
+              return await tmdb.getMovieDetails(item.id);
+            } else {
+              return await tmdb.getTVDetails(item.id);
+            }
+          } catch (error) {
+            logger.error(`Failed to load details for ${item.type} ${item.id}:`, error);
+            return null;
+          }
+        });
+
+        const watchHistoryDetails = (await Promise.all(watchHistoryDetailsPromises))
+          .filter((item): item is Movie | TVShow => item !== null);
+
+        // Get favorites and watchlist if authenticated
+        const authState = auth.getAuthState();
+        let favorites: (Movie | TVShow)[] = [];
+        let watchlist: (Movie | TVShow)[] = [];
+
+        if (authState.isAuthenticated && authState.sessionId && authState.accountId) {
+          try {
+            [favorites, watchlist] = await Promise.all([
+              tmdb.getFavorites(authState.sessionId, authState.accountId).catch(() => []),
+              tmdb.getWatchlist(authState.sessionId, authState.accountId).catch(() => []),
+            ]);
+          } catch (error) {
+            logger.error('Failed to load favorites/watchlist for recommendations:', error);
+          }
+        }
         
-        const personalizedRecs = await tmdb.getPersonalizedRecommendations(uniqueHistoryItems);
+        const personalizedRecs = await tmdb.getPersonalizedRecommendations(uniqueHistoryItems, {
+          watchHistoryDetails,
+          favorites,
+          watchlist,
+          sessionId: authState.sessionId || undefined,
+          accountId: authState.accountId || undefined,
+        });
+        
         setRecommendations(filterValidMedia(personalizedRecs));
         
         // Check for new recommendations

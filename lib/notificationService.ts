@@ -137,7 +137,47 @@ class NotificationService {
         return;
       }
 
-      const personalizedRecs = await tmdb.getPersonalizedRecommendations(uniqueHistoryItems);
+      // Load watch history details for better recommendations
+      const watchHistoryDetailsPromises = uniqueHistoryItems.slice(0, 5).map(async (item) => {
+        try {
+          if (item.type === 'movie') {
+            return await tmdb.getMovieDetails(item.id);
+          } else {
+            return await tmdb.getTVDetails(item.id);
+          }
+        } catch (error) {
+          logger.error(`Failed to load details for ${item.type} ${item.id}:`, error);
+          return null;
+        }
+      });
+
+      const watchHistoryDetails = (await Promise.all(watchHistoryDetailsPromises))
+        .filter((item): item is any => item !== null);
+
+      // Get auth state for favorites/watchlist
+      const { auth } = await import('./auth');
+      const authState = auth.getAuthState();
+      let favorites: any[] = [];
+      let watchlist: any[] = [];
+
+      if (authState.isAuthenticated && authState.sessionId && authState.accountId) {
+        try {
+          [favorites, watchlist] = await Promise.all([
+            tmdb.getFavorites(authState.sessionId, authState.accountId).catch(() => []),
+            tmdb.getWatchlist(authState.sessionId, authState.accountId).catch(() => []),
+          ]);
+        } catch (error) {
+          logger.error('Failed to load favorites/watchlist for recommendations:', error);
+        }
+      }
+
+      const personalizedRecs = await tmdb.getPersonalizedRecommendations(uniqueHistoryItems, {
+        watchHistoryDetails,
+        favorites,
+        watchlist,
+        sessionId: authState.sessionId || undefined,
+        accountId: authState.accountId || undefined,
+      });
       
       if (personalizedRecs.length > this.prevRecommendationsCount && this.prevRecommendationsCount > 0) {
         notifications.checkNewRecommendations(personalizedRecs, this.prevRecommendationsCount);
