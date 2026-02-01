@@ -12,6 +12,16 @@ import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import type { Movie, TVShow } from '@/lib/types';
 
+// Shuffle array function for randomization
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 export default function Home() {
   const [latestReleases, setLatestReleases] = useState<Movie[]>([]);
   const [popularMovies, setPopularMovies] = useState<Movie[]>([]);
@@ -108,15 +118,16 @@ export default function Home() {
           tmdb.getTrendingAll('day'),
           tmdb.getUpcomingMovies(),
         ]);
-        setLatestReleases(filterValidMedia(latest));
-        setPopularMovies(filterValidMedia(movies));
-        setPopularTV(filterValidMedia(tv));
-        setTopRatedMovies(filterValidMedia(topRatedM));
-        setTopRatedTV(filterValidMedia(topRatedT));
-        setNowPlayingMovies(filterValidMedia(nowPlaying));
-        setOnTheAirTV(filterValidMedia(onTheAir));
-        setTrendingToday(filterValidMedia(trending));
-        setUpcomingMovies(filterValidMedia(upcoming));
+        // Randomize all categories except continue watching and recommendations
+        setLatestReleases(shuffleArray(filterValidMedia(latest)));
+        setPopularMovies(shuffleArray(filterValidMedia(movies)));
+        setPopularTV(shuffleArray(filterValidMedia(tv)));
+        setTopRatedMovies(shuffleArray(filterValidMedia(topRatedM)));
+        setTopRatedTV(shuffleArray(filterValidMedia(topRatedT)));
+        setNowPlayingMovies(shuffleArray(filterValidMedia(nowPlaying)));
+        setOnTheAirTV(shuffleArray(filterValidMedia(onTheAir)));
+        setTrendingToday(shuffleArray(filterValidMedia(trending)));
+        setUpcomingMovies(shuffleArray(filterValidMedia(upcoming)));
         
             // Check for trending updates (only if we have previous state to compare)
             if (trending.length > 0 && prevTrendingIdsRef.current.size > 0) {
