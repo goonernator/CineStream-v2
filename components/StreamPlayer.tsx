@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react';
 import VideoPlayer from './VideoPlayer';
+import { logger } from '@/lib/logger';
 import type { StreamSource, StreamCaption } from '@/lib/streaming';
 
 interface StreamPlayerProps {

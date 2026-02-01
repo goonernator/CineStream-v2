@@ -8,6 +8,7 @@ import StillWatchingModal from '@/components/StillWatchingModal';
 import { streaming } from '@/lib/streaming';
 import { tmdb } from '@/lib/tmdb';
 import { watchProgress } from '@/lib/watchProgress';
+import { logger } from '@/lib/logger';
 import type { Movie, TVShow } from '@/lib/types';
 import type { StreamSource, StreamCaption } from '@/lib/streaming';
 
