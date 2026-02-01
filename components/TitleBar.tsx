@@ -128,6 +128,7 @@ export default function TitleBar() {
     { label: 'Home', href: '/' },
     { label: 'Browse', href: '#', hasMenu: 'browse' },
     { label: 'Genres', href: '#', hasMenu: 'genres' },
+    { label: 'Anime', href: '/anime' },
     { label: 'My Lists', href: '#', hasMenu: 'lists' },
   ];
 
@@ -214,7 +215,7 @@ export default function TitleBar() {
           >
             <div className="absolute inset-0 bg-netflix-red/20 rounded-lg animate-pulse" />
             <h1 className="text-lg font-bold text-netflix-red whitespace-nowrap relative z-10">
-              Cinestream
+              {pathname === '/anime' ? 'Animestream' : 'Cinestream'}
             </h1>
           </Link>
 
@@ -308,18 +309,6 @@ export default function TitleBar() {
                           ))}
                         </div>
                       </div>
-                    </div>
-                    <div className="px-4 py-3 bg-netflix-red/10 border-t border-netflix-red/20">
-                      <Link
-                        href="/genres"
-                        className="flex items-center justify-center gap-2 text-sm text-netflix-red hover:text-netflix-light hover:bg-netflix-red/25 rounded-lg px-3 py-2 transition-colors"
-                        onClick={() => setActiveMenu(null)}
-                      >
-                        Browse All Genres
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </Link>
                     </div>
                   </div>
                 )}

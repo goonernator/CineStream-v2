@@ -8,6 +8,7 @@ import EpisodeCard from '@/components/EpisodeCard';
 import { DetailsSkeleton, CastSkeleton, EpisodeListSkeleton } from '@/components/DetailsSkeleton';
 import { tmdb, TMDB_IMAGE_BASE } from '@/lib/tmdb';
 import { watchProgress } from '@/lib/watchProgress';
+import { streaming } from '@/lib/streaming';
 import { auth } from '@/lib/auth';
 import type { Movie, TVShow, Video, Episode, CastMember } from '@/lib/types';
 
@@ -32,6 +33,7 @@ export default function DetailsPage() {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [selectedEpisode, setSelectedEpisode] = useState(1);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [episodeAvailability, setEpisodeAvailability] = useState<Map<number, boolean>>(new Map());
   const [showTrailerModal, setShowTrailerModal] = useState(false);
   const [selectedCast, setSelectedCast] = useState<CastMember | null>(null);
   const [scrollY, setScrollY] = useState(0);
@@ -198,9 +200,11 @@ export default function DetailsPage() {
     setLoadingEpisodes(true);
     try {
       const seasonData = await tmdb.getSeasonDetails(tvId, seasonNumber);
-      setEpisodes(seasonData.episodes || []);
-      if (seasonData.episodes && seasonData.episodes.length > 0) {
-        if (defaultEpisode && defaultEpisode <= seasonData.episodes.length) {
+      const loadedEpisodes = seasonData.episodes || [];
+      setEpisodes(loadedEpisodes);
+      
+      if (loadedEpisodes.length > 0) {
+        if (defaultEpisode && defaultEpisode <= loadedEpisodes.length) {
           setSelectedEpisode(defaultEpisode);
           // Scroll to episode after a short delay to ensure DOM is updated
           setTimeout(() => {
@@ -212,11 +216,51 @@ export default function DetailsPage() {
         } else {
           setSelectedEpisode(1);
         }
+        
+        // Check availability for all episodes (in batches to avoid overwhelming the API)
+        checkEpisodeAvailability(tvId, seasonNumber, loadedEpisodes);
       }
     } catch (error) {
       console.error('Failed to load episodes:', error);
     } finally {
       setLoadingEpisodes(false);
+    }
+  };
+
+  const checkEpisodeAvailability = async (tvId: number, seasonNumber: number, episodes: Episode[]) => {
+    // Check availability in batches of 5 to avoid overwhelming the API
+    const batchSize = 5;
+    const availabilityMap = new Map<number, boolean>();
+    
+    for (let i = 0; i < episodes.length; i += batchSize) {
+      const batch = episodes.slice(i, i + batchSize);
+      
+      // Check all episodes in batch in parallel
+      const availabilityChecks = await Promise.allSettled(
+        batch.map(async (episode) => {
+          try {
+            const result = await streaming.getTVStreamSourcesAsync(tvId, seasonNumber, episode.episode_number);
+            return { episodeNumber: episode.episode_number, available: result.sources.length > 0 };
+          } catch (error) {
+            return { episodeNumber: episode.episode_number, available: false };
+          }
+        })
+      );
+      
+      // Update availability map with results
+      availabilityChecks.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          availabilityMap.set(result.value.episodeNumber, result.value.available);
+        }
+      });
+      
+      // Update state after each batch to show progress
+      setEpisodeAvailability(new Map(availabilityMap));
+      
+      // Small delay between batches to be respectful to the API
+      if (i + batchSize < episodes.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
     }
   };
 
@@ -649,12 +693,21 @@ export default function DetailsPage() {
                       {episodes.map((episode, index) => {
                         const progress = watchProgress.getProgress(id, 'tv', selectedSeason, episode.episode_number);
                         const hasProgress = progress && progress.progress > 0 && progress.progress < 100;
+                        const isAvailable = episodeAvailability.has(episode.episode_number) 
+                          ? episodeAvailability.get(episode.episode_number) 
+                          : null; // null means not checked yet
+                        const isUnavailable = isAvailable === false;
                         
                         return (
                           <div 
                             key={episode.id}
-                            onClick={() => handleEpisodeClick(episode.episode_number)}
-                            className={`group flex gap-4 p-4 rounded-xl cursor-pointer transition-all duration-200 animate-slide-in ${
+                            id={`episode-${episode.episode_number}`}
+                            onClick={() => !isUnavailable && handleEpisodeClick(episode.episode_number)}
+                            className={`group flex gap-4 p-4 rounded-xl transition-all duration-200 animate-slide-in ${
+                              isUnavailable 
+                                ? 'opacity-60 cursor-not-allowed' 
+                                : 'cursor-pointer'
+                            } ${
                               episode.episode_number === selectedEpisode 
                                 ? 'bg-netflix-red/20 border-l-4 border-netflix-red' 
                                 : 'bg-netflix-dark/40 hover:bg-netflix-dark/70 border-l-4 border-transparent hover:border-netflix-gray/50'
@@ -685,14 +738,16 @@ export default function DetailsPage() {
                                 E{episode.episode_number}
                               </div>
 
-                              {/* Play icon overlay */}
-                              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
-                                <div className="w-10 h-10 rounded-full bg-netflix-red/90 flex items-center justify-center">
-                                  <svg className="w-4 h-4 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M8 5v14l11-7z"/>
-                                  </svg>
+                              {/* Play icon overlay - only show for available episodes */}
+                              {!isUnavailable && (
+                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                                  <div className="w-10 h-10 rounded-full bg-netflix-red/90 flex items-center justify-center">
+                                    <svg className="w-4 h-4 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M8 5v14l11-7z"/>
+                                    </svg>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
 
                               {/* Progress bar */}
                               {hasProgress && (
@@ -701,6 +756,18 @@ export default function DetailsPage() {
                                     className="h-full bg-netflix-red"
                                     style={{ width: `${progress.progress}%` }}
                                   />
+                                </div>
+                              )}
+
+                              {/* Unavailable overlay */}
+                              {isUnavailable && (
+                                <div className="absolute inset-0 bg-black/70 flex items-center justify-center backdrop-blur-sm">
+                                  <div className="text-center px-3">
+                                    <svg className="w-8 h-8 text-netflix-gray mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <p className="text-xs text-netflix-gray font-medium">Not Available</p>
+                                  </div>
                                 </div>
                               )}
                             </div>

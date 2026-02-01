@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { tmdb } from '@/lib/tmdb';
 import { TMDB_IMAGE_BASE } from '@/lib/tmdb';
 import { profiles } from '@/lib/profiles';
+import { filterValidMedia } from '@/lib/mediaFilter';
 import type { Movie, TVShow } from '@/lib/types';
 
 const BASE_RECENT_SEARCHES_KEY = 'recent_searches';
@@ -99,7 +100,7 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     setTrendingLoading(true);
     try {
       const results = await tmdb.getTrendingAll('day');
-      setTrending(results.slice(0, 12));
+      setTrending(filterValidMedia(results).slice(0, 12));
     } catch (error) {
       console.error('Failed to load trending:', error);
     } finally {
@@ -155,10 +156,15 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
           searchResults = searchResults.filter(item => item.media_type === 'person');
         }
 
-        // Filter out incomplete items
-        const filtered = searchResults.filter(
-          (item) => item.poster_path || item.profile_path
-        );
+        // Filter out incomplete items - for media items, use filterValidMedia, for people keep profile_path check
+        const filtered = searchResults.filter((item) => {
+          // For people, check profile_path
+          if (item.media_type === 'person') {
+            return !!item.profile_path;
+          }
+          // For movies/TV shows, use the global filter
+          return filterValidMedia([item]).length > 0;
+        });
         setResults(filtered);
       } catch (error) {
         console.error('Search error:', error);
@@ -266,7 +272,7 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search movies, TV shows, people..."
-                className="w-full pl-14 pr-14 py-5 bg-netflix-gray/15 border border-netflix-gray/30 text-netflix-light text-xl focus:outline-none focus:border-netflix-red transition-all duration-300 shadow-2xl focus:shadow-netflix-red/20 focus:ring-2 focus:ring-netflix-red/30 rounded-2xl placeholder:text-netflix-gray"
+                className="w-full pl-14 pr-14 py-5 bg-netflix-gray/15 border border-netflix-gray/30 text-black text-xl focus:outline-none focus:border-netflix-red transition-all duration-300 shadow-2xl focus:shadow-netflix-red/20 focus:ring-2 focus:ring-netflix-red/30 rounded-2xl placeholder:text-netflix-gray"
               />
               {query && (
                 <button

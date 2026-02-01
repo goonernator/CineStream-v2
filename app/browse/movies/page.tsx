@@ -5,6 +5,7 @@ import FilterBar, { FilterState, defaultFilterState } from '@/components/FilterB
 import MediaGrid from '@/components/MediaGrid';
 import { BrowsePageSkeleton } from '@/components/CarouselSkeleton';
 import { tmdb } from '@/lib/tmdb';
+import { filterValidMedia } from '@/lib/mediaFilter';
 import type { Movie, Genre, DiscoverFilters } from '@/lib/types';
 
 export default function BrowseMoviesPage() {
@@ -64,10 +65,11 @@ export default function BrowseMoviesPage() {
       const discoverFilters = buildDiscoverFilters(currentFilters, currentPage);
       const result = await tmdb.discoverMovies(discoverFilters);
 
+      const validMovies = filterValidMedia(result.results);
       if (append) {
-        setMovies(prev => [...prev, ...result.results]);
+        setMovies(prev => [...prev, ...validMovies]);
       } else {
-        setMovies(result.results);
+        setMovies(validMovies);
       }
       setTotalPages(result.total_pages);
       setPage(currentPage);

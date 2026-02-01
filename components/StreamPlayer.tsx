@@ -75,8 +75,7 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, mediaId, 
     return (
       <div className="w-full h-full bg-netflix-dark flex items-center justify-center">
         <div className="text-center px-4">
-          <p className="text-red-500 text-lg font-semibold mb-2">No Streaming Sources Available</p>
-          <p className="text-netflix-gray text-sm">Unable to find any streaming sources at this time. Please try again later.</p>
+          <p className="text-netflix-light text-lg">No stream available, check back soon</p>
         </div>
       </div>
     );
@@ -131,17 +130,7 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, mediaId, 
     return (
       <div className="w-full h-full bg-netflix-dark flex items-center justify-center">
         <div className="text-center px-4">
-          <p className="text-red-500 text-lg font-semibold mb-2">All Streaming Sources Failed</p>
-          <p className="text-netflix-gray text-sm mb-4">We've tried all available sources, but none are working at the moment. Please try again later.</p>
-          <button
-            onClick={() => {
-              setCurrentSourceIndex(0);
-              setHasError(false);
-            }}
-            className="px-6 py-3 bg-netflix-red hover:bg-red-600 text-white rounded-lg font-semibold transition-colors"
-          >
-            Retry All Sources
-          </button>
+          <p className="text-netflix-light text-lg">No stream available, check back soon</p>
         </div>
       </div>
     );

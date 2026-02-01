@@ -1,7 +1,8 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
 import type { MediaItem } from '@/lib/types';
+import { filterValidMedia } from '@/lib/mediaFilter';
 import MediaCard from './MediaCard';
 
 interface CarouselProps {
@@ -11,6 +12,8 @@ interface CarouselProps {
 }
 
 export default function Carousel({ title, items, id }: CarouselProps) {
+  // Filter items to only show those with thumbnails and ratings
+  const validItems = useMemo(() => filterValidMedia(items), [items]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [pageSize, setPageSize] = useState(0);
@@ -49,7 +52,7 @@ export default function Carousel({ title, items, id }: CarouselProps) {
       clearTimeout(timeoutId);
       window.removeEventListener('resize', calculatePageSize);
     };
-  }, [items]);
+  }, [validItems]);
 
   // Add native wheel event listener with capture to catch all events from children
   useEffect(() => {
@@ -187,7 +190,7 @@ export default function Carousel({ title, items, id }: CarouselProps) {
             e.stopPropagation();
           }}
         >
-          {items.map((item, index) => (
+          {validItems.map((item, index) => (
             <div
               key={item.id}
               ref={index === 0 ? cardRef : undefined}

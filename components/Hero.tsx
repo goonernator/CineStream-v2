@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { tmdb } from '@/lib/tmdb';
 import { TMDB_IMAGE_BASE } from '@/lib/tmdb';
 import { watchProgress, type WatchProgress } from '@/lib/watchProgress';
+import { filterValidMedia } from '@/lib/mediaFilter';
 import type { Movie, TVShow } from '@/lib/types';
 
 const ROTATION_INTERVAL = 8000; // 8 seconds
@@ -42,7 +43,8 @@ export default function Hero() {
               item = await tmdb.getTVDetails(recentProgress.id);
             }
             
-            if (item.backdrop_path) {
+            // Check if item has thumbnail and rating
+            if (item.backdrop_path && item.poster_path && item.vote_average && item.vote_average > 0) {
               items.push({
                 item,
                 isFromContinueWatching: true,
@@ -57,11 +59,11 @@ export default function Hero() {
         // Load trending for rotation
         try {
           const trending = await tmdb.getTrendingAll('day');
-          const trendingWithBackdrops = trending
-            .filter(item => item.backdrop_path)
+          const validTrending = filterValidMedia(trending)
+            .filter(item => item.backdrop_path) // Hero needs backdrop
             .slice(0, items.length > 0 ? 5 : 6); // 5 trending + 1 continue watching, or 6 trending
           
-          trendingWithBackdrops.forEach(item => {
+          validTrending.forEach(item => {
             // Don't duplicate if it's the continue watching item
             if (!items.some(h => h.item.id === item.id)) {
               items.push({

@@ -6,6 +6,7 @@ import MediaGrid from '@/components/MediaGrid';
 import { BrowsePageSkeleton } from '@/components/CarouselSkeleton';
 import { MediaCardSkeletonGrid } from '@/components/MediaCardSkeleton';
 import { tmdb } from '@/lib/tmdb';
+import { filterValidMedia } from '@/lib/mediaFilter';
 import type { Movie, TVShow, Genre } from '@/lib/types';
 
 // Genre icons mapping
@@ -127,7 +128,8 @@ export default function GenrePage() {
     while (items.length < minItems && hasMore && page <= totalPages) {
       const result = await tmdb.getMoviesByGenre(genreId, page);
       const filtered = filterByPrimaryGenre(result.results, genreId);
-      items = [...items, ...filtered];
+      const validItems = filterValidMedia(filtered);
+      items = [...items, ...validItems];
       totalPages = result.total_pages;
       hasMore = page < totalPages;
       page++;
@@ -150,7 +152,8 @@ export default function GenrePage() {
     while (items.length < minItems && hasMore && page <= totalPages) {
       const result = await tmdb.getTVByGenre(genreId, page);
       const filtered = filterByPrimaryGenre(result.results, genreId);
-      items = [...items, ...filtered];
+      const validItems = filterValidMedia(filtered);
+      items = [...items, ...validItems];
       totalPages = result.total_pages;
       hasMore = page < totalPages;
       page++;

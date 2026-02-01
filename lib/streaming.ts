@@ -76,19 +76,27 @@ export const streaming = {
   },
 
   // Fetch movie stream data from tlo.sh API
-  async getMovieStreamData(TMDB_ID: number): Promise<StreamAPIResponse> {
+  async getMovieStreamData(TMDB_ID: number): Promise<StreamAPIResponse | null> {
     const response = await this.fetchWithTimeout(`/api/proxy-stream?type=movie&tmdbId=${TMDB_ID}`, 60000); // 60 seconds
     if (!response.ok) {
+      // 404 is expected when no stream is available - return null instead of throwing
+      if (response.status === 404) {
+        return null;
+      }
       throw new Error(`Failed to fetch movie stream: ${response.statusText}`);
     }
     return response.json();
   },
 
   // Fetch TV show stream data from tlo.sh API
-  async getTVStreamData(TMDB_ID: number, SEASON: number, EPISODE: number): Promise<StreamAPIResponse> {
+  async getTVStreamData(TMDB_ID: number, SEASON: number, EPISODE: number): Promise<StreamAPIResponse | null> {
     try {
       const response = await this.fetchWithTimeout(`/api/proxy-stream?type=tv&tmdbId=${TMDB_ID}&season=${SEASON}&episode=${EPISODE}`, 60000); // 60 seconds
       if (!response.ok) {
+        // 404 is expected when no stream is available - return null instead of throwing
+        if (response.status === 404) {
+          return null;
+        }
         const errorText = await response.text();
         console.warn('tlo.sh TV API error:', response.status, errorText);
         throw new Error(`Failed to fetch TV stream: ${response.statusText}`);
@@ -308,19 +316,27 @@ export const streaming = {
     try {
       // Fetch from both sources in parallel
       const [tloResult, rivestreamResult] = await Promise.allSettled([
-        this.getMovieStreamData(TMDB_ID).then(data => this.parseStreamSources(data)),
+        this.getMovieStreamData(TMDB_ID).then(data => data ? this.parseStreamSources(data) : []),
         this.getRivestreamMovieData(TMDB_ID),
       ]);
 
       const tloSources = tloResult.status === 'fulfilled' ? tloResult.value : [];
       const rivestreamData = rivestreamResult.status === 'fulfilled' ? rivestreamResult.value : { sources: [], captions: [] };
 
+      // Only log unexpected errors (not 404s which are expected)
       if (tloResult.status === 'rejected') {
-        console.warn('tlo.sh movie fetch failed:', tloResult.reason);
-        console.error('tlo.sh error details:', tloResult.reason);
+        const error = tloResult.reason;
+        // Don't log 404 errors as they're expected when no stream is available
+        if (error instanceof Error && !error.message.includes('Not Found')) {
+          console.warn('tlo.sh movie fetch failed:', error.message);
+        }
       }
       if (rivestreamResult.status === 'rejected') {
-        console.warn('Rivestream movie fetch failed:', rivestreamResult.reason);
+        const error = rivestreamResult.reason;
+        // Don't log 404 errors as they're expected when no stream is available
+        if (error instanceof Error && !error.message.includes('Not Found')) {
+          console.warn('Rivestream movie fetch failed:', error.message);
+        }
       }
 
       // Combine sources: Flowcast (rivestream) first as priority, then tlo.sh as fallback
@@ -341,19 +357,27 @@ export const streaming = {
     try {
       // Fetch from both sources in parallel
       const [tloResult, rivestreamResult] = await Promise.allSettled([
-        this.getTVStreamData(TMDB_ID, SEASON, EPISODE).then(data => this.parseStreamSources(data)),
+        this.getTVStreamData(TMDB_ID, SEASON, EPISODE).then(data => data ? this.parseStreamSources(data) : []),
         this.getRivestreamTVData(TMDB_ID, SEASON, EPISODE),
       ]);
 
       const tloSources = tloResult.status === 'fulfilled' ? tloResult.value : [];
       const rivestreamData = rivestreamResult.status === 'fulfilled' ? rivestreamResult.value : { sources: [], captions: [] };
 
+      // Only log unexpected errors (not 404s which are expected)
       if (tloResult.status === 'rejected') {
-        console.warn('tlo.sh TV fetch failed:', tloResult.reason);
-        console.error('tlo.sh error details:', tloResult.reason);
+        const error = tloResult.reason;
+        // Don't log 404 errors as they're expected when no stream is available
+        if (error instanceof Error && !error.message.includes('Not Found')) {
+          console.warn('tlo.sh TV fetch failed:', error.message);
+        }
       }
       if (rivestreamResult.status === 'rejected') {
-        console.warn('Rivestream TV fetch failed:', rivestreamResult.reason);
+        const error = rivestreamResult.reason;
+        // Don't log 404 errors as they're expected when no stream is available
+        if (error instanceof Error && !error.message.includes('Not Found')) {
+          console.warn('Rivestream TV fetch failed:', error.message);
+        }
       }
 
       // Combine sources: Flowcast (rivestream) first as priority, then tlo.sh as fallback

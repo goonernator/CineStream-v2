@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef, useCallback, useEffect, useState } from 'react';
+import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import MediaCard from './MediaCard';
 import { MediaCardSkeletonGrid } from './MediaCardSkeleton';
+import { filterValidMedia } from '@/lib/mediaFilter';
 import type { MediaItem } from '@/lib/types';
 
 interface MediaGridProps {
@@ -38,6 +39,8 @@ export default function MediaGrid({
   className = '',
   columns = { sm: 2, md: 3, lg: 4, xl: 5, '2xl': 6 },
 }: MediaGridProps) {
+  // Filter items to only show those with thumbnails and ratings
+  const validItems = useMemo(() => filterValidMedia(items), [items]);
   const observerTarget = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -86,7 +89,7 @@ export default function MediaGrid({
   `;
 
   // Show initial loading skeletons
-  if (loading && items.length === 0) {
+  if (loading && validItems.length === 0) {
     return (
       <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 ${className}`}>
         {Array.from({ length: 18 }).map((_, i) => (
@@ -97,7 +100,7 @@ export default function MediaGrid({
   }
 
   // Empty state
-  if (!loading && items.length === 0) {
+  if (!loading && validItems.length === 0) {
     return (
       <div className={`flex flex-col items-center justify-center py-20 ${className}`}>
         <svg className="w-20 h-20 text-netflix-gray/50 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
@@ -112,7 +115,7 @@ export default function MediaGrid({
     <div className={className}>
       {/* Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
-        {items.map((item, index) => (
+        {validItems.map((item, index) => (
           <div 
             key={`${item.id}-${index}`} 
             className="animate-scale-up"
@@ -123,7 +126,7 @@ export default function MediaGrid({
         ))}
         
         {/* Loading skeletons at the end */}
-        {loading && items.length > 0 && (
+        {loading && validItems.length > 0 && (
           <>
             {Array.from({ length: 6 }).map((_, i) => (
               <MediaCardSkeletonGrid key={`skeleton-${i}`} />
@@ -177,7 +180,7 @@ export function MediaGridCompact({
   loading?: boolean;
   className?: string;
 }) {
-  if (loading && items.length === 0) {
+  if (loading && validItems.length === 0) {
     return (
       <div className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 ${className}`}>
         {Array.from({ length: 12 }).map((_, i) => (

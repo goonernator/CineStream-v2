@@ -7,6 +7,7 @@ import CarouselSkeleton, { HomePageSkeleton } from '@/components/CarouselSkeleto
 import { tmdb } from '@/lib/tmdb';
 import { watchProgress } from '@/lib/watchProgress';
 import { notifications } from '@/lib/notifications';
+import { filterValidMedia } from '@/lib/mediaFilter';
 import type { Movie, TVShow } from '@/lib/types';
 
 export default function Home() {
@@ -21,7 +22,6 @@ export default function Home() {
   const [continueWatchingLoading, setContinueWatchingLoading] = useState(true);
   const [trendingToday, setTrendingToday] = useState<(Movie | TVShow)[]>([]);
   const [upcomingMovies, setUpcomingMovies] = useState<Movie[]>([]);
-  const [animeTV, setAnimeTV] = useState<TVShow[]>([]);
   const [recommendations, setRecommendations] = useState<(Movie | TVShow)[]>([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -69,7 +69,8 @@ export default function Home() {
                 return true;
               });
               
-              setContinueWatching(uniqueDetails);
+              // Filter out items without thumbnails or ratings
+              setContinueWatching(filterValidMedia(uniqueDetails));
             } else {
               setContinueWatching([]);
             }
@@ -84,7 +85,7 @@ export default function Home() {
         }
 
         // Load other categories including new ones
-        const [latest, movies, tv, topRatedM, topRatedT, nowPlaying, onTheAir, trending, upcoming, anime] = await Promise.all([
+        const [latest, movies, tv, topRatedM, topRatedT, nowPlaying, onTheAir, trending, upcoming] = await Promise.all([
           tmdb.getLatestReleases(),
           tmdb.getPopularMovies(),
           tmdb.getPopularTV(),
@@ -94,18 +95,16 @@ export default function Home() {
           tmdb.getOnTheAirTV(),
           tmdb.getTrendingAll('day'),
           tmdb.getUpcomingMovies(),
-          tmdb.getAnimeTV(),
         ]);
-        setLatestReleases(latest);
-        setPopularMovies(movies);
-        setPopularTV(tv);
-        setTopRatedMovies(topRatedM);
-        setTopRatedTV(topRatedT);
-        setNowPlayingMovies(nowPlaying);
-        setOnTheAirTV(onTheAir);
-        setTrendingToday(trending);
-        setUpcomingMovies(upcoming);
-        setAnimeTV(anime);
+        setLatestReleases(filterValidMedia(latest));
+        setPopularMovies(filterValidMedia(movies));
+        setPopularTV(filterValidMedia(tv));
+        setTopRatedMovies(filterValidMedia(topRatedM));
+        setTopRatedTV(filterValidMedia(topRatedT));
+        setNowPlayingMovies(filterValidMedia(nowPlaying));
+        setOnTheAirTV(filterValidMedia(onTheAir));
+        setTrendingToday(filterValidMedia(trending));
+        setUpcomingMovies(filterValidMedia(upcoming));
         
         // Check for trending updates
         if (trending.length > 0) {
@@ -155,7 +154,7 @@ export default function Home() {
         }
         
         const personalizedRecs = await tmdb.getPersonalizedRecommendations(uniqueHistoryItems);
-        setRecommendations(personalizedRecs);
+        setRecommendations(filterValidMedia(personalizedRecs));
         
         // Check for new recommendations
         if (personalizedRecs.length > prevRecommendationsCountRef.current && prevRecommendationsCountRef.current > 0) {
@@ -225,13 +224,6 @@ export default function Home() {
       {upcomingMovies.length > 0 && (
         <div className="px-4 sm:px-6 lg:px-8">
           <Carousel title="Coming Soon" items={upcomingMovies} id="upcoming-movies" />
-        </div>
-      )}
-
-      {/* Anime Section */}
-      {animeTV.length > 0 && (
-        <div className="px-4 sm:px-6 lg:px-8">
-          <Carousel title="Anime" items={animeTV} id="anime" />
         </div>
       )}
 

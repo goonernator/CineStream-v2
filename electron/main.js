@@ -129,37 +129,105 @@ function createWindow() {
       }, 1000);
     });
   } else {
-    // Production: run Next.js server directly in Electron process
+    // Production: run Next.js server in a child process
     const fs = require('fs');
-    const serverPath = path.join(process.resourcesPath, 'app', '.next', 'standalone');
-    const serverJsPath = path.join(serverPath, 'server.js');
+    const { spawn } = require('child_process');
     
-    // Check if standalone server exists
-    if (!fs.existsSync(serverJsPath)) {
-      console.error('Standalone server not found at:', serverJsPath);
+    // Try multiple possible paths for the standalone server
+    const possiblePaths = [
+      path.join(process.resourcesPath, 'app', '.next', 'standalone'),
+      path.join(__dirname, '..', '.next', 'standalone'),
+      path.join(process.resourcesPath, '.next', 'standalone'),
+    ];
+    
+    let serverPath = null;
+    let serverJsPath = null;
+    
+    for (const possiblePath of possiblePaths) {
+      const testPath = path.join(possiblePath, 'server.js');
+      if (fs.existsSync(testPath)) {
+        serverPath = possiblePath;
+        serverJsPath = testPath;
+        console.log('Found standalone server at:', serverJsPath);
+        break;
+      }
+    }
+    
+    if (!serverJsPath || !fs.existsSync(serverJsPath)) {
+      console.error('Standalone server not found. Tried paths:');
+      possiblePaths.forEach(p => console.error('  -', path.join(p, 'server.js')));
+      console.error('Resources path:', process.resourcesPath);
+      console.error('__dirname:', __dirname);
       mainWindow.loadURL('about:blank');
+      mainWindow.webContents.executeJavaScript(`
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;color:#fff;font-family:sans-serif;background:#141414;"><h1>Error: Server Not Found</h1><p>The Next.js server files could not be located.</p><p>Please rebuild the application.</p></div>';
+      `);
       return;
     }
     
-    // Change to the server directory and set environment
-    process.chdir(serverPath);
+    // Set environment variables
     process.env.PORT = '42069';
     process.env.NODE_ENV = 'production';
     process.env.HOSTNAME = '127.0.0.1';
     
-    // Run the server directly in this process
-    // This avoids needing to spawn a separate Node.js process
+    // Spawn the Next.js server as a child process
     try {
-      // Import and start the Next.js server
-      require(serverJsPath);
+      console.log('Starting Next.js server from:', serverJsPath);
+      const serverProcess = spawn(process.execPath, [serverJsPath], {
+        cwd: serverPath,
+        env: {
+          ...process.env,
+          PORT: '42069',
+          NODE_ENV: 'production',
+          HOSTNAME: '127.0.0.1',
+        },
+        stdio: 'ignore', // Suppress server output
+      });
       
-      // Wait a moment for server to start, then load
-      setTimeout(() => {
-        mainWindow.loadURL('http://localhost:42069');
-      }, 2000);
+      serverProcess.on('error', (error) => {
+        console.error('Failed to spawn Next.js server:', error);
+        mainWindow.webContents.executeJavaScript(`
+          document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;color:#fff;font-family:sans-serif;background:#141414;"><h1>Error: Server Failed to Start</h1><p>${error.message}</p></div>';
+        `);
+      });
+      
+      // Wait for server to start, then load
+      let retries = 0;
+      const maxRetries = 10;
+      const checkServer = () => {
+        const http = require('http');
+        const req = http.get('http://localhost:42069', (res) => {
+          console.log('Server is ready!');
+          mainWindow.loadURL('http://localhost:42069');
+        });
+        
+        req.on('error', () => {
+          retries++;
+          if (retries < maxRetries) {
+            setTimeout(checkServer, 500);
+          } else {
+            console.error('Server failed to start after', maxRetries, 'retries');
+            mainWindow.webContents.executeJavaScript(`
+              document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;color:#fff;font-family:sans-serif;background:#141414;"><h1>Error: Server Timeout</h1><p>The server took too long to start.</p></div>';
+            `);
+          }
+        });
+      };
+      
+      // Start checking after a short delay
+      setTimeout(checkServer, 1000);
+      
+      // Clean up server process when app quits
+      app.on('before-quit', () => {
+        if (serverProcess && !serverProcess.killed) {
+          serverProcess.kill();
+        }
+      });
     } catch (error) {
       console.error('Failed to start Next.js server:', error);
-      mainWindow.loadURL('about:blank');
+      mainWindow.webContents.executeJavaScript(`
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;color:#fff;font-family:sans-serif;background:#141414;"><h1>Error: Server Exception</h1><p>${error.message}</p></div>';
+      `);
     }
   }
 

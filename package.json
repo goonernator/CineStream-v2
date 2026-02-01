@@ -46,8 +46,6 @@
       "output": "dist"
     },
     "files": [
-      ".next/standalone/**/*",
-      ".next/static/**/*",
       "app/**/*",
       "components/**/*",
       "lib/**/*",
@@ -62,6 +60,13 @@
       {
         "from": ".next/standalone",
         "to": "app/.next/standalone",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": ".next/static",
+        "to": "app/.next/static",
         "filter": [
           "**/*"
         ]

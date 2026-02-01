@@ -238,13 +238,8 @@ export default function WatchPage() {
       <div className="min-h-screen bg-netflix-dark">
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center px-4 max-w-md">
-            <div className="text-xl text-red-500 font-semibold mb-2">
-              {error || 'Unable to Find Streaming Sources'}
-            </div>
-            <p className="text-netflix-gray text-sm mb-6">
-              {error 
-                ? 'Please check your internet connection and try again, or come back later.'
-                : 'We couldn\'t find any streaming sources for this content. Please try again later or check back soon.'}
+            <p className="text-netflix-light text-lg mb-6">
+              No stream available, check back soon
             </p>
             <button
               onClick={() => router.back()}
