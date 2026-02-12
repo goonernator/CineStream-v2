@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
+import { useLayout } from '@/components/LayoutProvider';
+import { layouts } from '@/lib/layout';
 import { useToast } from '@/lib/toast';
 import { Theme, themes } from '@/lib/theme';
 import { watchProgress } from '@/lib/watchProgress';
@@ -130,6 +132,7 @@ function ThemeCard({ theme, label, colors, isActive, onClick }: ThemeCardProps) 
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
+  const { layout, setLayout } = useLayout();
   const toast = useToast();
 
   // Settings state
@@ -138,6 +141,7 @@ export default function SettingsPage() {
   const [defaultQuality, setDefaultQuality] = useState('auto');
   const [defaultSubtitleLang, setDefaultSubtitleLang] = useState('en');
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
+  const [adultContentEnabled, setAdultContentEnabled] = useState(false);
 
   // Load settings from localStorage
   useEffect(() => {
@@ -147,12 +151,14 @@ export default function SettingsPage() {
       const savedQuality = localStorage.getItem('cinestream_quality');
       const savedSubLang = localStorage.getItem('cinestream_subtitle_language');
       const savedSubEnabled = localStorage.getItem('cinestream_subtitles_enabled');
+      const savedAdultContent = localStorage.getItem('cinestream_adult_content_enabled');
 
       if (savedAutoplay !== null) setAutoplay(savedAutoplay === 'true');
       if (savedAutoNext !== null) setAutoNextEpisode(savedAutoNext === 'true');
       if (savedQuality) setDefaultQuality(savedQuality);
       if (savedSubLang) setDefaultSubtitleLang(savedSubLang);
       if (savedSubEnabled !== null) setSubtitlesEnabled(savedSubEnabled === 'true');
+      if (savedAdultContent !== null) setAdultContentEnabled(savedAdultContent === 'true');
     }
   }, []);
 
@@ -191,6 +197,16 @@ export default function SettingsPage() {
     setSubtitlesEnabled(value);
     saveSetting('subtitles_enabled', value);
     toast.success('Subtitle setting saved');
+  };
+
+  const handleAdultContentChange = (value: boolean) => {
+    setAdultContentEnabled(value);
+    saveSetting('adult_content_enabled', value);
+    toast.success(value ? 'Adult content enabled' : 'Adult content disabled');
+    // Trigger custom event so other components can react
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cinestream:adult-content-changed', { detail: { enabled: value } }));
+    }
   };
 
   const handleThemeChange = (newTheme: Theme) => {
@@ -252,6 +268,29 @@ export default function SettingsPage() {
             </div>
           </SettingSection>
 
+          {/* Layout Section */}
+          <SettingSection title="Layout" description="Choose your preferred layout style">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {Object.values(layouts).map((layoutOption) => (
+                <button
+                  key={layoutOption.name}
+                  onClick={() => {
+                    setLayout(layoutOption.style);
+                    toast.success(`Layout changed to ${layoutOption.label}`);
+                  }}
+                  className={`p-6 rounded-xl border-2 transition-all text-left ${
+                    layout === layoutOption.style
+                      ? 'border-netflix-red bg-netflix-red/10'
+                      : 'border-netflix-gray/30 hover:border-netflix-gray/50 bg-netflix-dark/50'
+                  }`}
+                >
+                  <h3 className="text-lg font-semibold mb-2 text-netflix-light">{layoutOption.label}</h3>
+                  <p className="text-sm text-netflix-gray">{layoutOption.description}</p>
+                </button>
+              ))}
+            </div>
+          </SettingSection>
+
           {/* Playback Section */}
           <SettingSection title="Playback" description="Control how videos play">
             <ToggleSwitch
@@ -306,6 +345,19 @@ export default function SettingsPage() {
               ]}
               onChange={handleSubtitleLangChange}
             />
+          </SettingSection>
+
+          {/* Content Section */}
+          <SettingSection title="Content" description="Control content visibility">
+            <ToggleSwitch
+              label="Enable adult content"
+              description="Show adult content section in navigation and allow access to mature content. This setting is disabled by default."
+              checked={adultContentEnabled}
+              onChange={handleAdultContentChange}
+            />
+            <p className="text-xs text-netflix-gray mt-2">
+              Enabling this option will make adult content accessible through the navigation menu. Please use responsibly.
+            </p>
           </SettingSection>
 
           {/* Data Management Section */}

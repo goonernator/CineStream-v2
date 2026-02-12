@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useLayout } from '@/components/LayoutProvider';
 import Carousel from '@/components/Carousel';
 import Hero from '@/components/Hero';
 import CarouselSkeleton, { HomePageSkeleton } from '@/components/CarouselSkeleton';
+import NoirFlixHome from '@/components/layouts/NoirFlixHome';
 import { tmdb } from '@/lib/tmdb';
 import { watchProgress } from '@/lib/watchProgress';
 import { notifications } from '@/lib/notifications';
@@ -23,6 +25,7 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 export default function Home() {
+  const { layout } = useLayout();
   const [latestReleases, setLatestReleases] = useState<Movie[]>([]);
   const [popularMovies, setPopularMovies] = useState<Movie[]>([]);
   const [popularTV, setPopularTV] = useState<TVShow[]>([]);
@@ -246,6 +249,12 @@ export default function Home() {
     };
   }, []);
 
+  // Render NoirFlix layout if selected
+  if (layout === 'noirflix') {
+    return <NoirFlixHome />;
+  }
+
+  // Classic layout
   if (loading) {
     return <HomePageSkeleton />;
   }

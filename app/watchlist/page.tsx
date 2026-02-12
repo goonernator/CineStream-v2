@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { useLayout } from '@/components/LayoutProvider';
 import MediaListCard from '@/components/MediaListCard';
 import { auth } from '@/lib/auth';
 import { tmdb, TMDB_IMAGE_BASE } from '@/lib/tmdb';
@@ -15,6 +16,7 @@ type WatchlistItem = (Movie | TVShow) & { media_type?: 'movie' | 'tv' };
 export default function WatchlistPage() {
   const router = useRouter();
   const toast = useToast();
+  const { layout } = useLayout();
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'movie' | 'tv'>('all');
@@ -163,6 +165,127 @@ export default function WatchlistPage() {
 
   const isAuthenticated = auth.getAuthState().isAuthenticated;
 
+  // NoirFlix Layout
+  if (layout === 'noirflix') {
+    return (
+      <div className="min-h-screen bg-[#050505] pt-32" style={{
+        backgroundImage: 'radial-gradient(circle at 50% -20%, #111 0%, transparent 60%), linear-gradient(to bottom, transparent 0%, #000 100%)'
+      }}>
+        <div className="px-16 pb-16">
+          {/* Header */}
+          <div className="mb-12">
+            <button
+              onClick={() => router.back()}
+              className="mb-8 font-mono text-xs border border-[#1a1a1a] px-5 py-2 transition-all hover:bg-white hover:text-black text-white/80"
+            >
+              ← BACK
+            </button>
+            <h1 className="text-5xl font-black uppercase mb-4 text-white">Watchlist</h1>
+            <p className="font-mono text-xs text-[#888] uppercase tracking-[2px]">
+              {watchlist.length} {watchlist.length === 1 ? 'ITEM' : 'ITEMS'}
+            </p>
+          </div>
+
+          {/* Controls */}
+          {isAuthenticated && watchlist.length > 0 && (
+            <div className="flex flex-col lg:flex-row gap-4 mb-12">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="SEARCH..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-4 pr-4 py-3 bg-[#0a0a0a] border border-[#1a1a1a] text-white placeholder-[#888] font-mono text-xs uppercase tracking-[2px] focus:outline-none focus:border-white/40 transition-all"
+                />
+              </div>
+              <div className="flex gap-2">
+                {(['all', 'movie', 'tv'] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setFilter(type)}
+                    className={`px-6 py-3 font-mono text-xs uppercase tracking-[2px] border transition-all ${
+                      filter === type
+                        ? 'bg-white text-black border-white'
+                        : 'border-[#1a1a1a] text-white/80 hover:bg-white hover:text-black'
+                    }`}
+                  >
+                    {type === 'all' ? 'ALL' : type === 'movie' ? 'MOVIES' : 'TV'}
+                  </button>
+                ))}
+              </div>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                className="px-6 py-3 bg-[#0a0a0a] border border-[#1a1a1a] text-white font-mono text-xs uppercase tracking-[2px] cursor-pointer"
+                style={{ colorScheme: 'dark' }}
+              >
+                <option value="recent">RECENT</option>
+                <option value="rating">RATING</option>
+                <option value="title">TITLE</option>
+                <option value="year">YEAR</option>
+              </select>
+            </div>
+          )}
+
+          {/* Content */}
+          {loading ? (
+            <div className="text-[#888] font-mono text-xs uppercase tracking-[2px]">LOADING...</div>
+          ) : !isAuthenticated ? (
+            <div className="text-center py-24">
+              <h2 className="text-3xl font-black uppercase mb-4 text-white">SIGN IN REQUIRED</h2>
+              <p className="font-mono text-xs text-[#888] uppercase tracking-[2px] mb-8">CONNECT YOUR ACCOUNT TO VIEW WATCHLIST</p>
+              <button
+                onClick={() => auth.initiateLogin()}
+                className="bg-white hover:bg-white/90 text-black px-8 py-4 font-mono text-xs uppercase tracking-[2px] transition-all border border-white"
+              >
+                SIGN IN
+              </button>
+            </div>
+          ) : watchlist.length === 0 ? (
+            <div className="text-center py-24">
+              <h2 className="text-3xl font-black uppercase mb-4 text-white">WATCHLIST EMPTY</h2>
+              <p className="font-mono text-xs text-[#888] uppercase tracking-[2px] mb-8">NO ITEMS IN WATCHLIST</p>
+              <button
+                onClick={() => router.push('/')}
+                className="bg-white hover:bg-white/90 text-black px-8 py-4 font-mono text-xs uppercase tracking-[2px] transition-all border border-white"
+              >
+                BROWSE CONTENT
+              </button>
+            </div>
+          ) : filteredWatchlist.length === 0 ? (
+            <div className="text-center py-20">
+              <h2 className="text-xl font-black uppercase mb-2 text-white">NO RESULTS</h2>
+              <p className="font-mono text-xs text-[#888] uppercase tracking-[2px] mb-4">
+                {searchQuery ? `NO ITEMS MATCHING "${searchQuery.toUpperCase()}"` : `NO ${filter === 'movie' ? 'MOVIES' : 'TV SHOWS'}`}
+              </p>
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setFilter('all');
+                }}
+                className="font-mono text-xs text-white/80 hover:text-white uppercase tracking-[2px]"
+              >
+                CLEAR FILTERS
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-4 gap-6">
+              {filteredWatchlist.map((item) => (
+                <MediaListCard
+                  key={`${item.id}-${item.media_type || ('title' in item ? 'movie' : 'tv')}`}
+                  item={item}
+                  onRemove={handleRemove}
+                  listType="watchlist"
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Classic Layout
   return (
     <div className="min-h-screen">
       {/* Hero Section */}

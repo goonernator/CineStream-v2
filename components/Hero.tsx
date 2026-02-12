@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { tmdb } from '@/lib/tmdb';
 import { TMDB_IMAGE_BASE } from '@/lib/tmdb';
+import { logger } from '@/lib/logger';
 import { watchProgress, type WatchProgress } from '@/lib/watchProgress';
 import { filterValidMedia } from '@/lib/mediaFilter';
 import type { Movie, TVShow } from '@/lib/types';

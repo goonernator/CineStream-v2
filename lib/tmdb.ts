@@ -648,7 +648,7 @@ export const tmdb = {
     // Strategy 3: Discover-Based Recommendations (25% weight)
     const discoverRecs: (Movie | TVShow)[] = [];
     try {
-      const discoverFilters = {
+      const discoverFilters: DiscoverFilters = {
         'vote_average.gte': preferences.minRating,
         sort_by: 'popularity.desc' as const,
         page: 1,
@@ -774,25 +774,35 @@ export const tmdb = {
   
   // Discover movies with filters
   async discoverMovies(filters: DiscoverFilters = {}): Promise<PaginatedResponse<Movie>> {
-    const response = await api.get<PaginatedResponse<Movie>>('/discover/movie', {
-      params: {
-        page: filters.page || 1,
-        sort_by: filters.sort_by || 'popularity.desc',
-        ...filters,
-      },
-    });
+    const params: Record<string, any> = {
+      page: filters.page || 1,
+      sort_by: filters.sort_by || 'popularity.desc',
+      ...filters,
+    };
+    
+    // Handle include_adult parameter (TMDB expects boolean)
+    if (filters.include_adult !== undefined) {
+      params.include_adult = filters.include_adult;
+    }
+    
+    const response = await api.get<PaginatedResponse<Movie>>('/discover/movie', { params });
     return response.data;
   },
 
   // Discover TV shows with filters
   async discoverTV(filters: DiscoverFilters = {}): Promise<PaginatedResponse<TVShow>> {
-    const response = await api.get<PaginatedResponse<TVShow>>('/discover/tv', {
-      params: {
-        page: filters.page || 1,
-        sort_by: filters.sort_by || 'popularity.desc',
-        ...filters,
-      },
-    });
+    const params: Record<string, any> = {
+      page: filters.page || 1,
+      sort_by: filters.sort_by || 'popularity.desc',
+      ...filters,
+    };
+    
+    // Handle include_adult parameter (TMDB expects boolean)
+    if (filters.include_adult !== undefined) {
+      params.include_adult = filters.include_adult;
+    }
+    
+    const response = await api.get<PaginatedResponse<TVShow>>('/discover/tv', { params });
     return response.data;
   },
 

@@ -180,6 +180,8 @@ export function MediaGridCompact({
   loading?: boolean;
   className?: string;
 }) {
+  const validItems = useMemo(() => filterValidMedia(items), [items]);
+  
   if (loading && validItems.length === 0) {
     return (
       <div className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 ${className}`}>
@@ -192,7 +194,7 @@ export function MediaGridCompact({
 
   return (
     <div className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 ${className}`}>
-      {items.map((item, index) => (
+      {validItems.map((item, index) => (
         <div 
           key={`${item.id}-${index}`}
           className="animate-scale-up"

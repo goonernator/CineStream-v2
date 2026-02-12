@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { auth } from '@/lib/auth';
+import { logger } from '@/lib/logger';
 
 interface LoginModalProps {
   isOpen: boolean;

@@ -373,4 +373,36 @@ export const watchProgress = {
     
     return mostWatched;
   },
+
+  // Get watchlist (local storage fallback - returns array of IDs)
+  getWatchlist(): number[] {
+    if (typeof window === 'undefined') return [];
+    
+    try {
+      const profileId = profiles.getActiveProfileId();
+      const key = profileId ? `cinestream_${profileId}_watchlist` : 'cinestream_watchlist';
+      const stored = localStorage.getItem(key);
+      if (!stored) return [];
+      return JSON.parse(stored);
+    } catch (error) {
+      logger.error('Failed to load watchlist:', error);
+      return [];
+    }
+  },
+
+  // Get favorites (local storage fallback - returns array of IDs)
+  getFavorites(): number[] {
+    if (typeof window === 'undefined') return [];
+    
+    try {
+      const profileId = profiles.getActiveProfileId();
+      const key = profileId ? `cinestream_${profileId}_favorites` : 'cinestream_favorites';
+      const stored = localStorage.getItem(key);
+      if (!stored) return [];
+      return JSON.parse(stored);
+    } catch (error) {
+      logger.error('Failed to load favorites:', error);
+      return [];
+    }
+  },
 };

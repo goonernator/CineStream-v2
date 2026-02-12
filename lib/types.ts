@@ -96,6 +96,9 @@ export interface DiscoverFilters {
   'primary_release_date.lte'?: string;
   'first_air_date.gte'?: string;
   'first_air_date.lte'?: string;
+  certification?: string; // e.g., "R", "NC-17"
+  certification_country?: string; // e.g., "US"
+  include_adult?: boolean;
 }
 
 export interface PaginatedResponse<T> {

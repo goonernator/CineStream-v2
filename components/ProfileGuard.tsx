@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { profiles } from '@/lib/profiles';
 
@@ -16,8 +16,17 @@ export default function ProfileGuard({ children }: ProfileGuardProps) {
   const router = useRouter();
   const [isChecking, setIsChecking] = useState(true);
   const [shouldRender, setShouldRender] = useState(false);
+  const hasRedirectedRef = useRef(false);
+  const lastPathnameRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Prevent re-running if pathname hasn't actually changed
+    if (lastPathnameRef.current === pathname) {
+      return;
+    }
+    lastPathnameRef.current = pathname;
+    hasRedirectedRef.current = false;
+
     // Skip check on public paths
     if (PUBLIC_PATHS.some(path => pathname.startsWith(path))) {
       setIsChecking(false);
@@ -34,11 +43,9 @@ export default function ProfileGuard({ children }: ProfileGuardProps) {
 
     if (!activeProfile) {
       // No active profile - redirect to profile selection
-      if (hasProfiles) {
-        // Has profiles but none selected
-        router.replace('/profiles');
-      } else {
-        // No profiles at all - go to profile creation
+      // Only redirect if we haven't already redirected and we're not already on /profiles
+      if (!hasRedirectedRef.current && pathname !== '/profiles') {
+        hasRedirectedRef.current = true;
         router.replace('/profiles');
       }
       setShouldRender(false);
@@ -48,14 +55,19 @@ export default function ProfileGuard({ children }: ProfileGuardProps) {
     }
 
     setIsChecking(false);
-  }, [pathname, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]); // Removed router from dependencies - it's stable
 
   // Listen for profile changes
   useEffect(() => {
     const handleProfileChange = () => {
       const activeProfile = profiles.getActiveProfile();
-      if (!activeProfile && !PUBLIC_PATHS.some(path => pathname.startsWith(path))) {
-        router.replace('/profiles');
+      const currentPath = window.location.pathname;
+      if (!activeProfile && !PUBLIC_PATHS.some(path => currentPath.startsWith(path))) {
+        if (!hasRedirectedRef.current) {
+          hasRedirectedRef.current = true;
+          router.replace('/profiles');
+        }
       }
     };
 
@@ -63,7 +75,8 @@ export default function ProfileGuard({ children }: ProfileGuardProps) {
     return () => {
       window.removeEventListener('cinestream:profile-changed', handleProfileChange);
     };
-  }, [pathname, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   // Show loading state while checking
   if (isChecking) {

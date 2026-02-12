@@ -5,6 +5,7 @@ import Hls from 'hls.js';
 import { watchProgress } from '@/lib/watchProgress';
 import { logger } from '@/lib/logger';
 import type { StreamCaption } from '@/lib/streaming';
+import { detectHDRSupport, isHDRSupported, checkVideoHDRSupport } from '@/lib/hdr';
 
 interface VideoPlayerProps {
   src: string;
@@ -74,10 +75,13 @@ export default function VideoPlayer({
   const [selectedCaptionIndex, setSelectedCaptionIndex] = useState<number>(-1); // -1 = off
   const [currentSubtitle, setCurrentSubtitle] = useState<string>('');
   const [subtitleCues, setSubtitleCues] = useState<Array<{ start: number; end: number; text: string }>>([]);
+  const [hdrSupported, setHdrSupported] = useState(false);
+  const [isPlayingHDR, setIsPlayingHDR] = useState(false);
   const hideControlsTimeout = useRef<NodeJS.Timeout | null>(null);
   const progressRestored = useRef(false);
   const lastSaveTime = useRef<number>(0);
   const onErrorRef = useRef(onError);
+  const hdrCheckRef = useRef<boolean>(false);
   
   // Refs for values used in video event handlers (to avoid effect re-runs)
   const mediaInfoRef = useRef({ mediaId, type, season, episode, title });
@@ -215,31 +219,66 @@ export default function VideoPlayer({
     setCurrentSubtitle(activeCue?.text || '');
   }, [currentTime, subtitleCues]);
 
+  // Check HDR support on mount (only once)
+  const hdrSupportedRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    // Only detect once and cache the result
+    // Use try-catch to prevent any errors from crashing the app
+    if (hdrSupportedRef.current === null && typeof window !== 'undefined') {
+      try {
+        const hdrCapabilities = detectHDRSupport();
+        hdrSupportedRef.current = hdrCapabilities.supported;
+        setHdrSupported(hdrCapabilities.supported);
+        if (hdrCapabilities.supported) {
+          logger.debug('HDR support detected:', hdrCapabilities);
+        }
+      } catch (error) {
+        // If HDR detection fails, just disable HDR support
+        logger.debug('HDR detection failed, disabling HDR:', error);
+        hdrSupportedRef.current = false;
+        setHdrSupported(false);
+      }
+    }
+  }, []);
+
   // HLS configuration helper
-  const createHlsConfig = () => ({
-    enableWorker: true,
-    lowLatencyMode: false,
-    backBufferLength: 90,
-    fragLoadingTimeOut: 120000,
-    manifestLoadingTimeOut: 120000,
-    levelLoadingTimeOut: 120000,
-    fragLoadingMaxRetry: 3, // Reduced from 6 to avoid rate limiting
-    manifestLoadingMaxRetry: 3, // Reduced from 6
-    levelLoadingMaxRetry: 3, // Reduced from 6
-    fragLoadingRetryDelay: 2000, // Increased from 1000ms to reduce request rate
-    levelLoadingRetryDelay: 2000,
-    manifestLoadingRetryDelay: 2000,
-    maxBufferLength: 60,
-    maxMaxBufferLength: 120,
-    maxBufferSize: 60 * 1000 * 1000,
-    maxBufferHole: 0.5,
-    startLevel: -1,
-    capLevelToPlayerSize: true,
-    abrEwmaDefaultEstimate: 500000,
-    abrBandWidthFactor: 0.95,
-    abrBandWidthUpFactor: 0.7,
-    debug: false, // Disable debug logs
-  });
+  const createHlsConfig = () => {
+    const config = {
+      enableWorker: true,
+      lowLatencyMode: false,
+      backBufferLength: 90,
+      fragLoadingTimeOut: 120000,
+      manifestLoadingTimeOut: 120000,
+      levelLoadingTimeOut: 120000,
+      fragLoadingMaxRetry: 3, // Reduced from 6 to avoid rate limiting
+      manifestLoadingMaxRetry: 3, // Reduced from 6
+      levelLoadingMaxRetry: 3, // Reduced from 6
+      fragLoadingRetryDelay: 2000, // Increased from 1000ms to reduce request rate
+      levelLoadingRetryDelay: 2000,
+      manifestLoadingRetryDelay: 2000,
+      maxBufferLength: 60,
+      maxMaxBufferLength: 120,
+      maxBufferSize: 60 * 1000 * 1000,
+      maxBufferHole: 0.5,
+      startLevel: -1,
+      capLevelToPlayerSize: true,
+      abrEwmaDefaultEstimate: 500000,
+      abrBandWidthFactor: 0.95,
+      abrBandWidthUpFactor: 0.7,
+      debug: false, // Disable debug logs
+    };
+
+    // HLS.js will automatically prefer HDR variants if available in the manifest
+    // The manifest parsing logic below will handle HDR level selection
+
+    return config;
+  };
+
+  // Reset HDR state when src changes
+  useEffect(() => {
+    setIsPlayingHDR(false);
+    hdrCheckRef.current = false;
+  }, [src]);
 
   useEffect(() => {
     if (!videoRef.current) return;
@@ -259,6 +298,27 @@ export default function VideoPlayer({
       hlsRef.current = hls;
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        // Check for HDR levels in the manifest (use ref to avoid stale closure)
+        const isHdrSupported = hdrSupportedRef.current === true;
+        if (hls.levels && hls.levels.length > 0 && isHdrSupported) {
+          // Find HDR levels (check for HDR codecs)
+          const hdrLevels: number[] = [];
+          hls.levels.forEach((level, index) => {
+            // Check if level has HDR indicators in codec
+            const codec = (level as any).codecs || '';
+            if (codec.includes('hev1') || codec.includes('dvh1') || codec.includes('av01')) {
+              hdrLevels.push(index);
+            }
+          });
+          
+          if (hdrLevels.length > 0) {
+            // Prefer highest quality HDR level (usually last in array)
+            const preferredHdrLevel = hdrLevels[hdrLevels.length - 1];
+            hls.currentLevel = preferredHdrLevel;
+            logger.debug('HDR level selected:', preferredHdrLevel, 'out of', hdrLevels.length, 'HDR levels');
+          }
+        }
+
         // Don't auto-play here - let the pausedForStillWatching effect handle it
         // This prevents play() interruption when modal appears
         const { autoplay } = getAutoplaySettings();
@@ -269,6 +329,26 @@ export default function VideoPlayer({
               logger.error('Failed to play video:', error);
             }
           });
+        }
+      });
+
+      // Monitor HDR playback (use ref to track state to prevent repeated updates)
+      hls.on(Hls.Events.LEVEL_SWITCHED, () => {
+        const isHdrSupported = hdrSupportedRef.current === true;
+        if (hls.levels && hls.currentLevel !== undefined && isHdrSupported) {
+          const currentLevel = hls.levels[hls.currentLevel];
+          if (currentLevel) {
+            const codec = (currentLevel as any).codecs || '';
+            const isHDR = codec.includes('hev1') || codec.includes('dvh1') || codec.includes('av01');
+            // Only update state if it changed to prevent unnecessary re-renders
+            if (isHDR !== hdrCheckRef.current) {
+              setIsPlayingHDR(isHDR);
+              hdrCheckRef.current = isHDR;
+              if (isHDR) {
+                logger.debug('Playing HDR content:', codec);
+              }
+            }
+          }
         }
       });
 
@@ -437,8 +517,22 @@ export default function VideoPlayer({
       setIsMuted(video.muted);
     };
     const handleWaiting = () => setBuffering(true);
-    const handleCanPlay = () => {
+    const handleCanPlay = async () => {
       setBuffering(false);
+      
+      // Check if video is playing in HDR (only check once per video load)
+      if (hdrSupported && !isPlayingHDR) {
+        try {
+          const isHDR = await checkVideoHDRSupport(video);
+          setIsPlayingHDR(isHDR);
+          if (isHDR) {
+            logger.debug('Video is playing in HDR mode');
+          }
+        } catch (error) {
+          // Ignore errors to prevent loops
+          logger.debug('HDR check failed:', error);
+        }
+      }
       
       // Restore progress when video is ready (can seek) - only once
       const { mediaId: mid, type: t, season: s, episode: ep } = mediaInfoRef.current;
@@ -659,9 +753,10 @@ export default function VideoPlayer({
     }
   };
 
-  // Check if we're in the last 6 minutes and auto-next is enabled
+  // Show next episode button when there's a next episode and auto-next is enabled
+  // Show it always (not just in last 6 minutes) so users can click it anytime
   const { autoNext } = getAutoplaySettings();
-  const showNextEpisode = hasNextEpisode && type === 'tv' && autoNext && (duration - currentTime) <= 360 && (duration - currentTime) > 0;
+  const showNextEpisode = hasNextEpisode && type === 'tv' && autoNext && duration > 0;
 
   // Handle caption selection changes
   const handleCaptionChange = (index: number) => {
@@ -738,13 +833,23 @@ export default function VideoPlayer({
         <div className="absolute bottom-24 right-4 z-[60] animate-fade-in pointer-events-auto">
           <button
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
+              logger.debug('Next episode button clicked');
               if (onNextEpisode) {
-                onNextEpisode();
+                try {
+                  onNextEpisode();
+                } catch (error) {
+                  logger.error('Error in onNextEpisode handler:', error);
+                }
               }
             }}
-            className="bg-white/95 hover:bg-white text-black px-6 py-3 rounded-md flex items-center gap-2 transition-all duration-200 hover:scale-105 shadow-xl font-semibold text-lg pointer-events-auto"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+            }}
+            className="bg-white/95 hover:bg-white text-black px-6 py-3 rounded-md flex items-center gap-2 transition-all duration-200 hover:scale-105 shadow-xl font-semibold text-lg pointer-events-auto cursor-pointer"
             aria-label="Play next episode"
+            type="button"
           >
             <span>Next Episode</span>
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -917,6 +1022,17 @@ export default function VideoPlayer({
               <div className="text-sm font-medium">
                 {formatTime(currentTime)} / {formatTime(duration)}
               </div>
+
+              {/* HDR Indicator */}
+              {isPlayingHDR && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-netflix-red/20 rounded text-xs font-semibold text-netflix-red border border-netflix-red/30">
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18l8 4v8.64l-8 4-8-4V8.18l8-4z"/>
+                    <path d="M12 8l-4 2v4l4 2 4-2v-4l-4-2zm0 2.18l2 1v1.64l-2 1-2-1v-1.64l2-1z"/>
+                  </svg>
+                  <span>HDR</span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center space-x-4">

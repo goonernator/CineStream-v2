@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
+import { useLayout } from '@/components/LayoutProvider';
 import CastModal from '@/components/CastModal';
 import EpisodeCard from '@/components/EpisodeCard';
 import { DetailsSkeleton, CastSkeleton, EpisodeListSkeleton } from '@/components/DetailsSkeleton';
@@ -24,6 +25,7 @@ export default function DetailsPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { layout } = useLayout();
   const [mediaItem, setMediaItem] = useState<Movie | TVShow | null>(null);
   const [trailer, setTrailer] = useState<Video | null>(null);
   const [cast, setCast] = useState<CastMember[]>([]);
@@ -347,13 +349,29 @@ export default function DetailsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen">
+      <div className={`min-h-screen ${layout === 'noirflix' ? 'bg-[#050505] pt-32' : ''}`}>
         <DetailsSkeleton />
       </div>
     );
   }
 
   if (!mediaItem) {
+    if (layout === 'noirflix') {
+      return (
+        <div className="min-h-screen bg-[#050505] flex items-center justify-center pt-32">
+          <div className="text-center">
+            <h2 className="text-3xl font-black uppercase mb-4 text-white">NOT FOUND</h2>
+            <p className="font-mono text-xs text-[#888] uppercase tracking-[2px] mb-8">THE CONTENT YOU'RE LOOKING FOR DOESN'T EXIST</p>
+            <button
+              onClick={() => router.push('/')}
+              className="bg-white hover:bg-white/90 text-black px-8 py-4 font-mono text-xs uppercase tracking-[2px] transition-all border border-white"
+            >
+              GO HOME
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center pt-16">
         <div className="text-center">
@@ -390,6 +408,355 @@ export default function DetailsPage() {
   const backdropOpacity = Math.max(0.1, 0.5 - scrollY / 800);
   const backdropScale = 1 + Math.min(scrollY / 2000, 0.1);
 
+  // NoirFlix Layout
+  if (layout === 'noirflix') {
+    return (
+      <div className="min-h-screen bg-[#050505] pt-32" style={{
+        backgroundImage: 'radial-gradient(circle at 50% -20%, #111 0%, transparent 60%), linear-gradient(to bottom, transparent 0%, #000 100%)'
+      }}>
+        {/* Hero Section */}
+        <div className="relative h-[70vh] w-full overflow-hidden -mt-32">
+          {backdropPath && (
+            <div className="absolute inset-0">
+              <Image
+                src={backdropPath}
+                alt={title}
+                fill
+                className="object-cover opacity-40 grayscale-[40%]"
+                priority
+              />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-transparent" />
+        </div>
+
+        {/* Content */}
+        <div className="relative -mt-[40vh] px-16 pb-16 z-10">
+          {/* Back button */}
+          <button
+            onClick={() => router.back()}
+            className="mb-8 font-mono text-xs border border-[#1a1a1a] px-5 py-2 transition-all hover:bg-white hover:text-black text-white/80"
+          >
+            ← BACK
+          </button>
+
+          <div className="flex flex-col lg:flex-row gap-12">
+            {/* Poster */}
+            <div className="flex-shrink-0">
+              <div className="relative w-64 lg:w-80 aspect-[2/3] border border-[#1a1a1a] overflow-hidden bg-[#0a0a0a]">
+                {posterPath ? (
+                  <Image
+                    src={posterPath}
+                    alt={title}
+                    fill
+                    className="object-cover brightness-[0.8]"
+                    sizes="320px"
+                    unoptimized
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-[#111]">
+                    <span className="text-6xl opacity-50">🎬</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Trailer button */}
+              {trailer && (
+                <button
+                  onClick={() => setShowTrailerModal(true)}
+                  className="w-full mt-4 font-mono text-xs border border-[#1a1a1a] px-5 py-3 transition-all hover:bg-white hover:text-black text-white/80 uppercase tracking-[2px]"
+                >
+                  WATCH TRAILER
+                </button>
+              )}
+
+              {/* Season Selector */}
+              {type === 'tv' && mediaItem && 'seasons' in mediaItem && mediaItem.seasons && (
+                <select
+                  value={selectedSeason}
+                  onChange={(e) => handleSeasonChange(parseInt(e.target.value))}
+                  className="w-full mt-3 bg-[#0a0a0a] border border-[#1a1a1a] text-white px-4 py-3 font-mono text-xs uppercase tracking-[2px] cursor-pointer"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23ffffff'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 1rem center',
+                    backgroundSize: '1rem',
+                    paddingRight: '3rem',
+                  }}
+                >
+                  {mediaItem.seasons
+                    .filter(s => s.season_number > 0 && s.episode_count > 0)
+                    .map(season => (
+                      <option key={season.id} value={season.season_number} className="bg-[#0a0a0a]">
+                        SEASON {season.season_number}
+                      </option>
+                    ))}
+                </select>
+              )}
+            </div>
+
+            {/* Info Section */}
+            <div className="flex-1 min-w-0">
+              {/* Title */}
+              <h1 className="text-5xl lg:text-6xl font-black uppercase mb-6 text-white leading-tight">
+                {title}
+              </h1>
+
+              {/* Meta info */}
+              <div className="flex flex-wrap items-center gap-6 mb-8">
+                <div className="font-mono text-xs text-[#888] uppercase tracking-[2px]">
+                  {releaseYear} // {isMovie ? 'MOVIE' : 'TV'}
+                </div>
+                {isMovie && mediaItem.runtime && (
+                  <div className="font-mono text-xs text-[#888] uppercase tracking-[2px]">
+                    {mediaItem.runtime} MIN
+                  </div>
+                )}
+                {!isMovie && 'number_of_seasons' in mediaItem && mediaItem.number_of_seasons && (
+                  <div className="font-mono text-xs text-[#888] uppercase tracking-[2px]">
+                    {mediaItem.number_of_seasons} SEASON{mediaItem.number_of_seasons > 1 ? 'S' : ''}
+                  </div>
+                )}
+                <div className="font-mono text-xs text-white uppercase tracking-[2px]">
+                  RATING: {(mediaItem.vote_average * 10).toFixed(0)}%
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex flex-wrap gap-4 mb-10">
+                <button
+                  onClick={handlePlay}
+                  className="bg-white hover:bg-white/90 text-black px-8 py-4 font-mono text-xs uppercase tracking-[2px] transition-all border border-white"
+                >
+                  {(() => {
+                    if (type === 'tv') {
+                      const allProgress = watchProgress.getAllProgress();
+                      const tvProgress = allProgress
+                        .filter(p => p.id === id && p.type === 'tv' && p.season && p.episode)
+                        .sort((a, b) => (b.lastWatched || 0) - (a.lastWatched || 0))[0];
+                      if (tvProgress && tvProgress.season && tvProgress.episode && tvProgress.progress > 0 && tvProgress.progress < 90) {
+                        return `RESUME S${tvProgress.season}E${tvProgress.episode}`;
+                      }
+                      return `PLAY S${selectedSeason}E${selectedEpisode}`;
+                    } else {
+                      const progress = watchProgress.getProgress(id, 'movie');
+                      if (progress && progress.progress > 0 && progress.progress < 90) {
+                        return 'RESUME';
+                      }
+                      return 'PLAY NOW';
+                    }
+                  })()}
+                </button>
+                
+                <button
+                  onClick={handleAddToWatchlist}
+                  className={`font-mono text-xs uppercase tracking-[2px] px-6 py-4 border transition-all ${
+                    isWatchlisted 
+                      ? 'bg-white text-black border-white' 
+                      : 'border-[#1a1a1a] text-white/80 hover:bg-white hover:text-black'
+                  }`}
+                  title={isWatchlisted ? 'Remove from Watchlist' : 'Add to Watchlist'}
+                >
+                  {isWatchlisted ? '✓ WATCHLIST' : '+ WATCHLIST'}
+                </button>
+                
+                <button
+                  onClick={handleAddToFavorites}
+                  className={`font-mono text-xs uppercase tracking-[2px] px-6 py-4 border transition-all ${
+                    isFavorited 
+                      ? 'bg-white text-black border-white' 
+                      : 'border-[#1a1a1a] text-white/80 hover:bg-white hover:text-black'
+                  }`}
+                  title={isFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
+                >
+                  {isFavorited ? '✓ FAVORITE' : '+ FAVORITE'}
+                </button>
+              </div>
+
+              {/* Overview */}
+              <div className="mb-12">
+                <span className="label font-mono text-xs text-[#888] uppercase tracking-[4px] block mb-4">SYNOPSIS</span>
+                <p className="text-base text-white/90 leading-relaxed max-w-3xl">
+                  {mediaItem.overview}
+                </p>
+              </div>
+
+              {/* Cast Section */}
+              {cast.length > 0 && (
+                <div className="mb-12">
+                  <div className="flex items-baseline gap-8 mb-6">
+                    <h2 className="text-2xl font-black uppercase text-white">CAST</h2>
+                    <span className="font-mono text-xs text-[#888]">[{cast.length}]</span>
+                  </div>
+                  <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-6">
+                    {cast.slice(0, 16).map((actor) => (
+                      <button
+                        key={actor.id}
+                        onClick={() => setSelectedCast(actor)}
+                        className="text-center group cursor-pointer"
+                      >
+                        <div className="relative w-full aspect-square mb-3 rounded overflow-hidden bg-[#0a0a0a] border border-[#1a1a1a] transition-all group-hover:border-[rgba(255,255,255,0.4)]">
+                          {actor.profile_path ? (
+                            <Image
+                              src={`${TMDB_IMAGE_BASE}/w185${actor.profile_path}`}
+                              alt={actor.name}
+                              fill
+                              className="object-cover brightness-[0.7] group-hover:brightness-100 transition-all"
+                              sizes="185px"
+                              unoptimized
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-3xl text-[#888]">
+                              👤
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs font-bold text-white group-hover:text-white/70 transition-colors line-clamp-1">{actor.name}</p>
+                        <p className="text-[0.65rem] font-mono text-[#888] line-clamp-1">{actor.character}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Episode List */}
+              {type === 'tv' && (
+                <div>
+                  <div className="flex items-baseline gap-8 mb-6">
+                    <h2 className="text-2xl font-black uppercase text-white">
+                      SEASON {selectedSeason} EPISODES
+                    </h2>
+                    <span className="font-mono text-xs text-[#888]">[{episodes.length}]</span>
+                  </div>
+                  
+                  {loadingEpisodes ? (
+                    <div className="text-[#888] font-mono text-xs">LOADING...</div>
+                  ) : episodes.length === 0 ? (
+                    <p className="text-[#888] font-mono text-xs">NO EPISODES AVAILABLE</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {episodes.map((episode) => {
+                        const progress = watchProgress.getProgress(id, 'tv', selectedSeason, episode.episode_number);
+                        const hasProgress = progress && progress.progress > 0 && progress.progress < 100;
+                        const isAvailable = episodeAvailability.has(episode.episode_number) 
+                          ? episodeAvailability.get(episode.episode_number) 
+                          : null;
+                        const isUnavailable = isAvailable === false;
+                        
+                        return (
+                          <div
+                            key={episode.id}
+                            onClick={() => !isUnavailable && handleEpisodeClick(episode.episode_number)}
+                            className={`group flex gap-4 p-4 border transition-all cursor-pointer ${
+                              isUnavailable 
+                                ? 'opacity-40 cursor-not-allowed' 
+                                : 'hover:border-[rgba(255,255,255,0.4)]'
+                            } ${
+                              episode.episode_number === selectedEpisode 
+                                ? 'border-white bg-[rgba(255,255,255,0.05)]' 
+                                : 'border-[#1a1a1a] bg-[#0a0a0a] hover:bg-[#111]'
+                            }`}
+                          >
+                            <div className="relative w-32 h-20 flex-shrink-0 bg-[#111] border border-[#1a1a1a] overflow-hidden">
+                              {episode.still_path ? (
+                                <Image
+                                  src={`${TMDB_IMAGE_BASE}/w300${episode.still_path}`}
+                                  alt={episode.name}
+                                  fill
+                                  className="object-cover brightness-[0.6] group-hover:brightness-100 transition-all"
+                                  sizes="128px"
+                                  unoptimized
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-2xl text-[#888]">
+                                  📺
+                                </div>
+                              )}
+                              {hasProgress && (
+                                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1a1a1a]">
+                                  <div 
+                                    className="h-full bg-white"
+                                    style={{ width: `${progress.progress}%` }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-3 mb-2">
+                                <h3 className="font-bold text-white uppercase text-sm group-hover:text-white/80 transition-colors">
+                                  E{episode.episode_number}: {episode.name}
+                                </h3>
+                                {episode.vote_average > 0 && (
+                                  <span className="font-mono text-xs text-[#888] flex-shrink-0">
+                                    {episode.vote_average.toFixed(1)}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="font-mono text-[0.65rem] text-[#888] mb-2">
+                                {episode.air_date && new Date(episode.air_date).toLocaleDateString('en-US', { 
+                                  month: 'short', 
+                                  day: 'numeric',
+                                  year: 'numeric' 
+                                })}
+                                {episode.runtime && ` // ${episode.runtime} MIN`}
+                                {hasProgress && ` // ${progress.progress.toFixed(0)}% WATCHED`}
+                              </div>
+                              <p className="text-xs text-[#888] line-clamp-2">
+                                {episode.overview || 'NO DESCRIPTION AVAILABLE.'}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Cast Modal */}
+        {selectedCast && (
+          <CastModal
+            personId={selectedCast.id}
+            personName={selectedCast.name}
+            profilePath={selectedCast.profile_path}
+            isOpen={!!selectedCast}
+            onClose={() => setSelectedCast(null)}
+          />
+        )}
+
+        {/* Trailer Modal */}
+        {showTrailerModal && trailer && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[#050505]/95 backdrop-blur-sm"
+            onClick={closeTrailerModal}
+          >
+            <div
+              className="relative w-full max-w-6xl p-4 md:p-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={closeTrailerModal}
+                className="absolute top-0 right-0 w-12 h-12 bg-[#0a0a0a] border border-[#1a1a1a] hover:bg-white hover:text-black flex items-center justify-center text-white transition-all font-mono text-xs"
+              >
+                ✕
+              </button>
+              <div className="relative w-full rounded overflow-hidden border border-[#1a1a1a]" style={{ paddingBottom: '56.25%', height: 0 }}>
+                <div 
+                  id="trailer-iframe"
+                  className="absolute top-0 left-0 w-full h-full"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Classic Layout
   return (
     <div className="min-h-screen">
       {/* Immersive Hero Backdrop with Parallax - extends behind header */}

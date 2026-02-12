@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { startNotificationService, stopNotificationService } from '@/lib/notificationService';
 
 /**
@@ -8,13 +8,31 @@ import { startNotificationService, stopNotificationService } from '@/lib/notific
  * Initializes and manages the periodic notification checking service
  */
 export default function NotificationService() {
+  const hasStartedRef = useRef(false);
+
   useEffect(() => {
+    // Prevent multiple starts (React StrictMode double-invocation protection)
+    if (hasStartedRef.current) {
+      return;
+    }
+
+    hasStartedRef.current = true;
+    
     // Start the notification service when component mounts
-    startNotificationService();
+    try {
+      startNotificationService();
+    } catch (error) {
+      console.error('Failed to start notification service:', error);
+    }
 
     // Cleanup: stop the service when component unmounts
     return () => {
-      stopNotificationService();
+      hasStartedRef.current = false;
+      try {
+        stopNotificationService();
+      } catch (error) {
+        console.error('Failed to stop notification service:', error);
+      }
     };
   }, []);
 

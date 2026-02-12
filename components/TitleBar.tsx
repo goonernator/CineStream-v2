@@ -5,12 +5,16 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import { profiles, Profile } from '@/lib/profiles';
+import { useLayout } from './LayoutProvider';
 import SearchOverlay from './SearchOverlay';
 import LoginModal from './LoginModal';
 import ProfileDropdown from './ProfileDropdown';
 import NotificationCenter from './NotificationCenter';
+import NoirFlixNav from './NoirFlixNav';
+import WindowControls from './WindowControls';
 
 export default function TitleBar() {
+  const { layout } = useLayout();
   const pathname = usePathname();
   const router = useRouter();
   const [isMaximized, setIsMaximized] = useState(false);
@@ -20,12 +24,19 @@ export default function TitleBar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [adultContentEnabled, setAdultContentEnabled] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
     setAuthState(auth.getAuthState());
     setCurrentProfile(profiles.getActiveProfile());
+    
+    // Check adult content setting
+    if (typeof window !== 'undefined') {
+      const savedAdultContent = localStorage.getItem('cinestream_adult_content_enabled');
+      setAdultContentEnabled(savedAdultContent === 'true');
+    }
 
     if (typeof window !== 'undefined') {
       const isElectron = !!(window as any).electron;
@@ -55,15 +66,30 @@ export default function TitleBar() {
       setCurrentProfile(profiles.getActiveProfile());
       setAuthState(auth.getAuthState());
     };
+    
+    const handleStorageChange = () => {
+      if (typeof window !== 'undefined') {
+        const savedAdultContent = localStorage.getItem('cinestream_adult_content_enabled');
+        setAdultContentEnabled(savedAdultContent === 'true');
+      }
+    };
+    
+    const handleAdultContentChange = (e: CustomEvent) => {
+      setAdultContentEnabled(e.detail.enabled);
+    };
 
     window.addEventListener('cinestream:open-search', handleOpenSearch);
     window.addEventListener('cinestream:close-modal', handleCloseModal);
     window.addEventListener('cinestream:profile-changed', handleProfileChange);
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('cinestream:adult-content-changed', handleAdultContentChange as EventListener);
 
     return () => {
       window.removeEventListener('cinestream:open-search', handleOpenSearch);
       window.removeEventListener('cinestream:close-modal', handleCloseModal);
       window.removeEventListener('cinestream:profile-changed', handleProfileChange);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('cinestream:adult-content-changed', handleAdultContentChange as EventListener);
     };
   }, []);
 
@@ -84,23 +110,6 @@ export default function TitleBar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleMinimize = () => {
-    if (typeof window !== 'undefined' && (window as any).electron?.minimize) {
-      (window as any).electron.minimize();
-    }
-  };
-
-  const handleMaximize = () => {
-    if (typeof window !== 'undefined' && (window as any).electron?.maximize) {
-      (window as any).electron.maximize();
-    }
-  };
-
-  const handleClose = () => {
-    if (typeof window !== 'undefined' && (window as any).electron?.close) {
-      (window as any).electron.close();
-    }
-  };
 
   const handleLoginSuccess = () => {
     if (mounted) {
@@ -129,6 +138,7 @@ export default function TitleBar() {
     { label: 'Browse', href: '#', hasMenu: 'browse' },
     { label: 'Genres', href: '#', hasMenu: 'genres' },
     { label: 'Anime', href: '/anime' },
+    ...(adultContentEnabled ? [{ label: 'Adult', href: '/adult' }] : []),
     { label: 'My Lists', href: '#', hasMenu: 'lists' },
   ];
 
@@ -192,16 +202,24 @@ export default function TitleBar() {
     },
   ];
 
+  // Render NoirFlix navigation if layout is noirflix
+  if (layout === 'noirflix') {
+    return <NoirFlixNav />;
+  }
+
+  // Classic layout navigation
   return (
     <>
       <div
         ref={navRef}
-        className={`title-bar fixed top-0 left-0 right-0 h-10 bg-netflix-dark/95 backdrop-blur-sm z-50 flex items-center justify-between ${
+        className={`title-bar fixed top-0 left-0 right-0 bg-netflix-dark/95 backdrop-blur-sm z-50 flex items-center justify-between ${
           isElectron ? '' : 'pl-4'
         }`}
         style={{ 
           WebkitAppRegion: isElectron ? 'drag' : 'none',
-          paddingLeft: isElectron ? '0' : '1rem'
+          paddingLeft: isElectron ? '0' : '1rem',
+          paddingTop: '0.0625rem',
+          paddingBottom: '0.0625rem',
         } as React.CSSProperties}
       >
         {/* Left Section - App Name & Navigation */}
@@ -209,18 +227,18 @@ export default function TitleBar() {
           {/* App Name - Top Left Corner with Pulsing Background */}
           <Link 
             href="/" 
-            className="flex items-center h-full px-4 relative group"
+            className="flex items-center h-full px-3 relative group"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             data-tour="app-name"
           >
             <div className="absolute inset-0 bg-netflix-red/20 rounded-lg animate-pulse" />
-            <h1 className="text-lg font-bold text-netflix-red whitespace-nowrap relative z-10">
+            <h1 className="text-sm font-bold text-netflix-red whitespace-nowrap relative z-10">
               {pathname === '/anime' ? 'Animestream' : 'Cinestream'}
             </h1>
           </Link>
 
           {/* Main Navigation */}
-          <div className="hidden md:flex items-center gap-1 h-full ml-4">
+          <div className="hidden md:flex items-center gap-1 h-full ml-2">
             {navItems.map((item) => (
               <div
                 key={item.label}
@@ -230,7 +248,7 @@ export default function TitleBar() {
                 {item.hasMenu ? (
                   <button
                     onClick={() => setActiveMenu(activeMenu === item.hasMenu ? null : item.hasMenu)}
-                    className={`h-full px-4 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-1 ${
+                    className={`h-full px-3 text-xs font-medium rounded-lg transition-all duration-200 flex items-center gap-1 ${
                       activeMenu === item.hasMenu
                         ? 'text-netflix-light bg-netflix-red/30'
                         : 'text-netflix-gray hover:text-netflix-light hover:bg-netflix-red/20'
@@ -255,7 +273,7 @@ export default function TitleBar() {
                 ) : (
                   <Link
                     href={item.href}
-                    className={`h-full px-4 text-sm font-medium rounded-lg transition-all duration-200 flex items-center ${
+                    className={`h-full px-3 text-xs font-medium rounded-lg transition-all duration-200 flex items-center ${
                       pathname === item.href
                         ? 'text-netflix-light bg-netflix-red/30'
                         : 'text-netflix-gray hover:text-netflix-light hover:bg-netflix-red/20'
@@ -426,47 +444,7 @@ export default function TitleBar() {
           )}
 
           {/* Window Controls (Electron only) */}
-          {isElectron && (
-            <div className="flex items-center gap-1 ml-2">
-              <button
-                onClick={handleMinimize}
-                className="title-bar-button w-12 h-10 flex items-center justify-center hover:bg-netflix-bg transition-colors text-netflix-gray hover:text-netflix-light"
-                title="Minimize"
-                aria-label="Minimize window"
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <rect x="0" y="5" width="12" height="1" fill="currentColor" />
-                </svg>
-              </button>
-              <button
-                onClick={handleMaximize}
-                className="title-bar-button w-12 h-10 flex items-center justify-center hover:bg-netflix-bg transition-colors text-netflix-gray hover:text-netflix-light"
-                title={isMaximized ? 'Restore' : 'Maximize'}
-                aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
-              >
-                {isMaximized ? (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 2h8v8H2V2z" stroke="currentColor" strokeWidth="1" fill="none" />
-                    <path d="M4 4h6v6" stroke="currentColor" strokeWidth="1" />
-                  </svg>
-                ) : (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <rect x="0" y="0" width="12" height="12" stroke="currentColor" strokeWidth="1" fill="none" />
-                  </svg>
-                )}
-              </button>
-              <button
-                onClick={handleClose}
-                className="title-bar-button w-12 h-10 flex items-center justify-center hover:bg-red-600 transition-colors text-netflix-gray hover:text-white"
-                title="Close"
-                aria-label="Close window"
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-          )}
+          {isElectron && <WindowControls />}
 
           {/* Mobile Menu Button */}
           <button

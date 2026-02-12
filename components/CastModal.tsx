@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { tmdb, TMDB_IMAGE_BASE } from '@/lib/tmdb';
+import { logger } from '@/lib/logger';
 import { Skeleton } from './Skeleton';
 import type { Person, PersonCredit } from '@/lib/types';
 

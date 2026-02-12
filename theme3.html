@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #0a0a0b;
+            --accent: #e2e2e2;
+            --muted: #555555;
+            --film-red: #ff3c00;
+            --grain-opacity: 0.08;
+            --transition: cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--accent);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* --- CELLULOID GRAIN OVERLAY --- */
+        .grain-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: var(--grain-opacity);
+            filter: contrast(150%) brightness(100%);
+        }
+
+        .light-leak {
+            position: fixed;
+            top: -10%;
+            left: -10%;
+            width: 120%;
+            height: 120%;
+            background: radial-gradient(circle at 20% 30%, rgba(255, 60, 0, 0.05) 0%, transparent 40%),
+                        radial-gradient(circle at 80% 70%, rgba(0, 100, 255, 0.05) 0%, transparent 40%);
+            pointer-events: none;
+            z-index: 9998;
+        }
+
+        /* --- TYPOGRAPHY --- */
+        h1, h2, h3 { font-weight: 900; text-transform: uppercase; letter-spacing: -0.04em; }
+        .mono { font-family: 'Space Mono', monospace; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+
+        /* --- LAYOUT --- */
+        .app-container {
+            padding: 40px;
+            max-width: 1600px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 80px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 20px;
+        }
+
+        .nav-group {
+            display: flex;
+            gap: 40px;
+            align-items: center;
+        }
+
+        /* --- CATEGORY DROPDOWN --- */
+        .dropdown {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .dropdown:hover .dropdown-content {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown-trigger {
+            font-family: 'Space Mono', monospace;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: color 0.3s var(--transition);
+        }
+
+        .dropdown-trigger:hover { color: var(--film-red); }
+
+        .dropdown-content {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: #111;
+            border: 1px solid #333;
+            min-width: 200px;
+            padding: 10px 0;
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(10px);
+            transition: all 0.4s var(--transition);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        }
+
+        .dropdown-item {
+            padding: 10px 20px;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            transition: all 0.2s;
+        }
+
+        .dropdown-item:hover {
+            color: var(--accent);
+            background: rgba(255,255,255,0.05);
+            padding-left: 25px;
+        }
+
+        .user-auth {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 5px 15px;
+            border: 1px solid var(--accent);
+            border-radius: 50px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .user-auth:hover {
+            background: var(--accent);
+            color: var(--bg-base);
+        }
+
+        .user-auth img {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #333;
+        }
+
+        /* --- SECTIONS --- */
+        section {
+            margin-bottom: 80px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 30px;
+        }
+
+        .section-title { font-size: 2.5rem; }
+
+        /* --- MOVIE CARDS --- */
+        .movie-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 30px;
+        }
+
+        .card {
+            position: relative;
+            background: #111;
+            aspect-ratio: 16/10;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.6s var(--transition);
+        }
+
+        .card:hover {
+            transform: scale(1.02);
+        }
+
+        .card-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: grayscale(40%) contrast(110%);
+            transition: filter 0.6s;
+        }
+
+        .card:hover .card-img {
+            filter: grayscale(0%) contrast(100%);
+        }
+
+        .card-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.9));
+            transform: translateY(10px);
+            opacity: 0;
+            transition: all 0.4s var(--transition);
+        }
+
+        .card:hover .card-info {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        /* --- CONTINUE WATCHING --- */
+        .continue-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 20px;
+        }
+
+        .film-frame {
+            position: relative;
+            border-left: 12px solid #1a1a1a;
+            border-right: 12px solid #1a1a1a;
+            background: #111;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* Projector Perforation Holes */
+        .film-frame::before, .film-frame::after {
+            content: '';
+            position: absolute;
+            left: -9px;
+            top: 0;
+            height: 100%;
+            width: 6px;
+            background-image: radial-gradient(circle, #0a0a0b 2px, transparent 2px);
+            background-size: 10px 15px;
+            z-index: 2;
+        }
+        .film-frame::after { left: auto; right: -9px; }
+
+        .continue-content {
+            padding: 25px;
+            width: 100%;
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 2px;
+            background: rgba(255,255,255,0.1);
+            margin-top: 15px;
+            position: relative;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--film-red);
+            position: absolute;
+            left: 0;
+            top: 0;
+            box-shadow: 0 0 10px var(--film-red);
+        }
+
+        /* --- BUTTONS & INTERACTION --- */
+        .btn-fav {
+            background: transparent;
+            border: 1px solid var(--muted);
+            color: var(--accent);
+            padding: 5px 12px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.6rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-fav:hover {
+            border-color: var(--film-red);
+            color: var(--film-red);
+        }
+
+        .btn-fav.active {
+            background: var(--film-red);
+            border-color: var(--film-red);
+            color: white;
+        }
+
+        /* --- ANIMATIONS --- */
+        @keyframes flicker {
+            0% { opacity: 0.97; }
+            5% { opacity: 0.95; }
+            10% { opacity: 0.9; }
+            15% { opacity: 0.98; }
+            20% { opacity: 0.92; }
+            100% { opacity: 1; }
+        }
+
+        .flicker-effect {
+            animation: flicker 0.2s infinite;
+        }
+
+        .reveal {
+            animation: revealUp 1s var(--transition) both;
+        }
+
+        @keyframes revealUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .delay-1 { animation-delay: 0.2s; }
+        .delay-2 { animation-delay: 0.4s; }
+
+    </style>
+</head>
+<body>
+
+    <svg style="display:none;">
+        <filter id="grain">
+            <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
+            <feColorMatrix type="saturate" values="0" />
+            <feComponentTransfer>
+                <feFuncA type="table" tableValues="0 0.2" />
+            </feComponentTransfer>
+        </filter>
+    </svg>
+
+    <div class="grain-overlay" style="filter: url(#grain);"></div>
+    <div class="light-leak"></div>
+
+    <div class="app-container">
+        <header class="reveal">
+            <div class="nav-group">
+                <h1 style="font-size: 1.5rem; border-right: 1px solid #333; padding-right: 20px;">Noir.Stock</h1>
+                <div class="dropdown">
+                    <span class="dropdown-trigger">
+                        <span class="mono">Categories</span>
+                        <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor"/></svg>
+                    </span>
+                    <div class="dropdown-content">
+                        <div class="dropdown-item">New Wave</div>
+                        <div class="dropdown-item">Neo-Noir</div>
+                        <div class="dropdown-item">Cinéma Vérité</div>
+                        <div class="dropdown-item">Avant-Garde</div>
+                        <div class="dropdown-item">Surrealism</div>
+                    </div>
+                </div>
+                <span class="mono" style="cursor:pointer">Watchlist</span>
+                <span class="mono" style="cursor:pointer">Favourites</span>
+            </div>
+
+            <div class="user-auth">
+                <div style="width: 8px; height: 8px; background: #00ff66; border-radius: 50%;"></div>
+                <span>SESSION_409</span>
+                <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="">
+            </div>
+        </header>
+
+        <!-- CONTINUE WATCHING -->
+        <section class="reveal delay-1">
+            <div class="section-header">
+                <div>
+                    <span class="mono">Pick up session</span>
+                    <h2 class="section-title">Continue</h2>
+                </div>
+            </div>
+            <div class="continue-grid">
+                <div class="film-frame">
+                    <div class="continue-content">
+                        <span class="mono">Current: 01:42:09</span>
+                        <h3 style="margin: 5px 0;">Shadow Over the Valley</h3>
+                        <p class="mono" style="color: #888;">Dir. Elena Vos | 1964</p>
+                        <div class="progress-container">
+                            <div class="progress-bar" style="width: 65%;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="film-frame">
+                    <div class="continue-content">
+                        <span class="mono">Current: 00:12:45</span>
+                        <h3 style="margin: 5px 0;">The Glass Prism</h3>
+                        <p class="mono" style="color: #888;">Dir. Julian Thorne | 1978</p>
+                        <div class="progress-container">
+                            <div class="progress-bar" style="width: 12%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- WATCHLIST -->
+        <section class="reveal delay-2">
+            <div class="section-header">
+                <div>
+                    <span class="mono">Selected for you</span>
+                    <h2 class="section-title">Your Watchlist</h2>
+                </div>
+                <span class="mono" style="text-decoration: underline; cursor: pointer;">View Archive</span>
+            </div>
+            <div class="movie-grid">
+                <!-- Card 1 -->
+                <div class="card">
+                    <img src="https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&q=80&w=800" class="card-img" alt="Cinema">
+                    <div class="card-info">
+                        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span class="mono" style="color: white;">Noir / Thriller</span>
+                            <button class="btn-fav">ADD FAV</button>
+                        </div>
+                        <h3>The Quiet Night</h3>
+                        <p class="mono">8.2 / 10</p>
+                    </div>
+                </div>
+                <!-- Card 2 -->
+                <div class="card">
+                    <img src="https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&q=80&w=800" class="card-img" alt="Cinema">
+                    <div class="card-info">
+                        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span class="mono" style="color: white;">Documentary</span>
+                            <button class="btn-fav active">FAVOURED</button>
+                        </div>
+                        <h3>Lost in Grain</h3>
+                        <p class="mono">9.0 / 10</p>
+                    </div>
+                </div>
+                <!-- Card 3 -->
+                <div class="card">
+                    <img src="https://images.unsplash.com/photo-1478720568477-152d9b164e26?auto=format&fit=crop&q=80&w=800" class="card-img" alt="Cinema">
+                    <div class="card-info">
+                        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span class="mono" style="color: white;">Sci-Fi</span>
+                            <button class="btn-fav">ADD FAV</button>
+                        </div>
+                        <h3>Achromatic Dreams</h3>
+                        <p class="mono">7.5 / 10</p>
+                    </div>
+                </div>
+                <!-- Card 4 -->
+                <div class="card">
+                    <img src="https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&q=80&w=800" class="card-img" alt="Cinema">
+                    <div class="card-info">
+                        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span class="mono" style="color: white;">Mystery</span>
+                            <button class="btn-fav">ADD FAV</button>
+                        </div>
+                        <h3>Symmetric Echoes</h3>
+                        <p class="mono">8.8 / 10</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FOOTER INFO -->
+        <footer style="margin-top: 100px; padding-bottom: 50px; border-top: 1px solid #222; padding-top: 40px; display: flex; justify-content: space-between;">
+            <div class="mono" style="max-width: 400px;">
+                Celluloid playback engine v.2.0.4. Built for enthusiasts of the tactile frame. 
+            </div>
+            <div class="mono">
+                &copy; 2024 NOIR_STOCK_INTL
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Simple interactive state for favorite buttons
+        document.querySelectorAll('.btn-fav').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                btn.classList.toggle('active');
+                btn.textContent = btn.classList.contains('active') ? 'FAVOURED' : 'ADD FAV';
+            });
+        });
+
+        // Add random subtle light leak pulses
+        const leak = document.querySelector('.light-leak');
+        setInterval(() => {
+            const x = Math.random() * 100;
+            const y = Math.random() * 100;
+            const opacity = Math.random() * 0.08;
+            leak.style.background = `radial-gradient(circle at ${x}% ${y}%, rgba(255, 60, 0, ${opacity}) 0%, transparent 40%)`;
+        }, 3000);
+    </script>
+</body>
+</html>

@@ -3,6 +3,7 @@ import './globals.css';
 import TitleBar from '@/components/TitleBar';
 import ToastProvider from '@/components/ToastProvider';
 import ThemeProvider from '@/components/ThemeProvider';
+import LayoutProvider from '@/components/LayoutProvider';
 import ProfileProvider from '@/components/ProfileProvider';
 import ProfileGuard from '@/components/ProfileGuard';
 import NavigationWrapper from '@/components/NavigationWrapper';
@@ -29,7 +30,8 @@ export default function RootLayout({
         <DisableReactDevTools />
         <ErrorBoundary>
           <ThemeProvider>
-            <ProfileProvider>
+            <LayoutProvider>
+              <ProfileProvider>
               <ToastProvider>
                 <TitleBar />
                 <ProfileGuard>
@@ -46,6 +48,7 @@ export default function RootLayout({
                 <NotificationService />
               </ToastProvider>
             </ProfileProvider>
+            </LayoutProvider>
           </ThemeProvider>
         </ErrorBoundary>
       </body>

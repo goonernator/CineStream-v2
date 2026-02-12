@@ -3,6 +3,7 @@ const path = require('path');
 const isDev = !app.isPackaged;
 
 let mainWindow;
+let isCreatingWindow = false;
 
 // Register custom protocol to handle HLS stream proxying
 app.whenReady().then(() => {
@@ -96,6 +97,15 @@ app.whenReady().then(() => {
 });
 
 function createWindow() {
+  // Prevent multiple window creations
+  if (isCreatingWindow || mainWindow) {
+    if (mainWindow) {
+      mainWindow.focus();
+    }
+    return;
+  }
+
+  isCreatingWindow = true;
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -322,9 +332,12 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    isCreatingWindow = false;
     // Server runs in main process, no need to kill separately
     // Process will exit when all windows are closed
   });
+
+  isCreatingWindow = false;
 
   // Handle external links
   // (already handled above via setWindowOpenHandler)

@@ -163,11 +163,11 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
         // Filter out incomplete items - for media items, use filterValidMedia, for people keep profile_path check
         const filtered = searchResults.filter((item) => {
           // For people, check profile_path
-          if (item.media_type === 'person') {
-            return !!item.profile_path;
+          if ('media_type' in item && item.media_type === 'person') {
+            return 'profile_path' in item && !!item.profile_path;
           }
           // For movies/TV shows, use the global filter
-          return filterValidMedia([item]).length > 0;
+          return filterValidMedia([item as Movie | TVShow]).length > 0;
         });
         setResults(filtered);
       } catch (error) {
@@ -208,7 +208,7 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   };
 
   const handleItemClick = (item: Movie | TVShow | Person & { media_type?: string }) => {
-    const isPerson = item.media_type === 'person' || (!item.media_type && item.profile_path);
+    const isPerson = ('media_type' in item && item.media_type === 'person') || (!('media_type' in item) && 'profile_path' in item && item.profile_path);
     if (isPerson) return; // Don't navigate for people (for now)
     
     // Save the search
@@ -216,7 +216,7 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
       saveRecentSearch(query);
     }
     
-    const mediaType = item.media_type || (filter === 'movie' ? 'movie' : filter === 'tv' ? 'tv' : 'movie');
+    const mediaType = ('media_type' in item && item.media_type) || (filter === 'movie' ? 'movie' : filter === 'tv' ? 'tv' : 'movie');
     router.push(`/details/${item.id}?type=${mediaType}`);
     handleClose();
   };

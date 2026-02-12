@@ -2,7 +2,7 @@
 
 import { profiles } from './profiles';
 
-export type Theme = 'dark' | 'light' | 'midnight' | 'crimson' | 'system';
+export type Theme = 'dark' | 'light' | 'midnight' | 'crimson' | 'noirflix' | 'system';
 
 export interface ThemeConfig {
   name: string;
@@ -64,6 +64,17 @@ export const themes: Record<Exclude<Theme, 'system'>, ThemeConfig> = {
       gray: '#8B4F4F',
     },
   },
+  noirflix: {
+    name: 'noirflix',
+    label: 'NoirFlix',
+    colors: {
+      bg: '#050505',      // Obsidian deep
+      dark: '#0a0a0a',     // Obsidian surface
+      red: '#ffffff',      // White accent (for NoirFlix style)
+      light: '#ffffff',    // Primary text
+      gray: '#888888',     // Secondary text
+    },
+  },
 };
 
 // System theme base configs (uses default red accent)
@@ -112,7 +123,7 @@ export function getStoredTheme(): Theme {
     stored = localStorage.getItem(LEGACY_THEME_KEY);
   }
   
-  if (stored && (stored === 'dark' || stored === 'light' || stored === 'midnight' || stored === 'crimson' || stored === 'system')) {
+  if (stored && (stored === 'dark' || stored === 'light' || stored === 'midnight' || stored === 'crimson' || stored === 'noirflix' || stored === 'system')) {
     return stored as Theme;
   }
   return 'dark';

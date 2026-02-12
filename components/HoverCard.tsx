@@ -9,6 +9,7 @@ import { tmdb } from '@/lib/tmdb';
 import { streaming } from '@/lib/streaming';
 import { auth } from '@/lib/auth';
 import { TMDB_IMAGE_BASE } from '@/lib/tmdb';
+import { logger } from '@/lib/logger';
 import { useToast } from '@/lib/toast';
 
 interface HoverCardProps {

@@ -8,6 +8,7 @@ import HoverCard from './HoverCard';
 import { TMDB_IMAGE_BASE } from '@/lib/tmdb';
 import { tmdb } from '@/lib/tmdb';
 import { auth } from '@/lib/auth';
+import { logger } from '@/lib/logger';
 import { watchProgress, type WatchProgress } from '@/lib/watchProgress';
 import { useToast } from '@/lib/toast';
 
