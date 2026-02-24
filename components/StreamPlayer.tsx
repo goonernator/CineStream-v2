@@ -22,15 +22,106 @@ interface StreamPlayerProps {
 function StreamPlayer({ sources, captions = [], type = 'movie', title, mediaId, season, episode, hasNextEpisode, onNextEpisode, onControlsVisibilityChange, pausedForStillWatching = false }: StreamPlayerProps) {
   const [currentSourceIndex, setCurrentSourceIndex] = useState(0);
   const [hasError, setHasError] = useState(false);
+  const [providerHealth, setProviderHealth] = useState<Record<string, 'checking' | 'ok' | 'failed'>>({});
+  const currentSourceIndexRef = useRef(0);
+  const manualSwitchIndexRef = useRef<number | null>(null);
+  const manualSwitchLockUntilRef = useRef(0);
+  const warmedSourceUrlsRef = useRef<Set<string>>(new Set());
   const currentSource = sources[currentSourceIndex];
+
+  useEffect(() => {
+    currentSourceIndexRef.current = currentSourceIndex;
+  }, [currentSourceIndex]);
+
+  const warmSourceIfNeeded = useCallback((source?: StreamSource) => {
+    if (!source) return;
+
+    const isRiveProvider = source.provider === 'flowcast' || source.provider === 'hindicast';
+    const isLocalProxyUrl = source.url.startsWith('/api/proxy-hls?url=');
+    if (!isRiveProvider || !isLocalProxyUrl) return;
+
+    if (warmedSourceUrlsRef.current.has(source.url)) return;
+    warmedSourceUrlsRef.current.add(source.url);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    fetch(source.url, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-1023' },
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then((res) => {
+        clearTimeout(timeout);
+        logger.debug('StreamPlayer: Warm-up request complete', {
+          provider: source.provider,
+          quality: source.quality,
+          status: res.status,
+        });
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        // Warm-up is best-effort only; actual playback still proceeds normally.
+        logger.debug('StreamPlayer: Warm-up request skipped/failed', {
+          provider: source.provider,
+          quality: source.quality,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }, []);
+
+  // Provider status is based on parsed source presence only.
+  // Avoid probing stream URLs here: many are signed/cross-origin and probing them can cause 403s
+  // or consume short-lived URLs before the actual player uses them.
+  useEffect(() => {
+    const normalizeProvider = (provider?: string) => {
+      const p = provider || 'unknown';
+      return p === 'rivestream' ? 'flowcast' : p;
+    };
+    const grouped = new Map<string, StreamSource[]>();
+    for (const source of sources) {
+      const key = normalizeProvider(source.provider);
+      const arr = grouped.get(key) || [];
+      arr.push(source);
+      grouped.set(key, arr);
+    }
+
+    if (grouped.size === 0) {
+      setProviderHealth({});
+      return;
+    }
+
+    const next: Record<string, 'checking' | 'ok' | 'failed'> = {};
+    for (const [provider, providerSources] of grouped.entries()) {
+      next[provider] = providerSources.length > 0 ? 'ok' : 'failed';
+    }
+    setProviderHealth(next);
+  }, [sources]);
 
   // Memoize callbacks to prevent unnecessary VideoPlayer re-renders
   const handleSourceChange = useCallback((index: number) => {
+    warmSourceIfNeeded(sources[index]);
+    manualSwitchIndexRef.current = index;
+    manualSwitchLockUntilRef.current = Date.now() + 2000;
     setCurrentSourceIndex(index);
     setHasError(false);
-  }, []);
+  }, [sources, warmSourceIfNeeded]);
 
   const handleError = useCallback(() => {
+    const now = Date.now();
+    const isManualSwitchProtected =
+      manualSwitchIndexRef.current !== null &&
+      currentSourceIndexRef.current === manualSwitchIndexRef.current &&
+      now < manualSwitchLockUntilRef.current;
+
+    if (isManualSwitchProtected) {
+      logger.debug('StreamPlayer: Ignoring error during manual source switch grace period', {
+        sourceIndex: currentSourceIndexRef.current,
+      });
+      return;
+    }
+
     setCurrentSourceIndex(prevIndex => {
       const nextIndex = prevIndex + 1;
       if (nextIndex < sources.length) {
@@ -48,6 +139,22 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, mediaId, 
   // Reset error state when source changes
   useEffect(() => {
     setHasError(false);
+  }, [currentSourceIndex]);
+
+  // Warm up the currently selected Rivestream source (initial load + auto-fallback) once.
+  useEffect(() => {
+    warmSourceIfNeeded(currentSource);
+  }, [currentSource, warmSourceIfNeeded]);
+
+  // Clear stale manual-switch lock after the grace period
+  useEffect(() => {
+    if (manualSwitchIndexRef.current !== currentSourceIndex) return;
+    const timeout = setTimeout(() => {
+      if (manualSwitchIndexRef.current === currentSourceIndex) {
+        manualSwitchIndexRef.current = null;
+      }
+    }, 2100);
+    return () => clearTimeout(timeout);
   }, [currentSourceIndex]);
 
   // Log current source info
@@ -149,6 +256,7 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, mediaId, 
         season={season}
         episode={episode}
         sources={videoSources}
+        providerHealth={providerHealth}
         captions={captions}
         currentSourceIndex={currentSourceIndex}
         onSourceChange={handleSourceChange}
@@ -164,4 +272,3 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, mediaId, 
 
 // Memoize to prevent unnecessary re-renders when parent state changes
 export default memo(StreamPlayer);
-

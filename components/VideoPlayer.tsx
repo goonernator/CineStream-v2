@@ -6,6 +6,7 @@ import { watchProgress } from '@/lib/watchProgress';
 import { logger } from '@/lib/logger';
 import type { StreamCaption } from '@/lib/streaming';
 import { detectHDRSupport, isHDRSupported, checkVideoHDRSupport } from '@/lib/hdr';
+import { useLayout } from '@/components/LayoutProvider';
 
 interface VideoPlayerProps {
   src: string;
@@ -16,6 +17,7 @@ interface VideoPlayerProps {
   episode?: number;
   onError?: () => void;
   sources?: Array<{ url: string; quality: string; provider?: string }>;
+  providerHealth?: Record<string, 'checking' | 'ok' | 'failed'>;
   captions?: StreamCaption[];
   onSourceChange?: (index: number) => void;
   currentSourceIndex?: number;
@@ -50,6 +52,7 @@ export default function VideoPlayer({
   episode,
   onError,
   sources = [],
+  providerHealth = {},
   captions = [],
   onSourceChange,
   currentSourceIndex = 0,
@@ -58,6 +61,8 @@ export default function VideoPlayer({
   onControlsVisibilityChange,
   pausedForStillWatching = false,
 }: VideoPlayerProps) {
+  const { layout } = useLayout();
+  const isNoirFlix = layout === 'noirflix';
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -69,6 +74,8 @@ export default function VideoPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [buffering, setBuffering] = useState(false);
+  const [isSourceStarting, setIsSourceStarting] = useState(true);
+  const [startupElapsedSeconds, setStartupElapsedSeconds] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [showSkipIntro, setShowSkipIntro] = useState(false);
   const [showCaptionMenu, setShowCaptionMenu] = useState(false);
@@ -82,6 +89,7 @@ export default function VideoPlayer({
   const lastSaveTime = useRef<number>(0);
   const onErrorRef = useRef(onError);
   const hdrCheckRef = useRef<boolean>(false);
+  const startupIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Refs for values used in video event handlers (to avoid effect re-runs)
   const mediaInfoRef = useRef({ mediaId, type, season, episode, title });
@@ -278,12 +286,37 @@ export default function VideoPlayer({
   useEffect(() => {
     setIsPlayingHDR(false);
     hdrCheckRef.current = false;
+    setIsSourceStarting(true);
+    setStartupElapsedSeconds(0);
+    setBuffering(true);
   }, [src]);
+
+  useEffect(() => {
+    if (!isSourceStarting) {
+      if (startupIntervalRef.current) {
+        clearInterval(startupIntervalRef.current);
+        startupIntervalRef.current = null;
+      }
+      return;
+    }
+
+    startupIntervalRef.current = setInterval(() => {
+      setStartupElapsedSeconds(prev => prev + 1);
+    }, 1000);
+
+    return () => {
+      if (startupIntervalRef.current) {
+        clearInterval(startupIntervalRef.current);
+        startupIntervalRef.current = null;
+      }
+    };
+  }, [isSourceStarting]);
 
   useEffect(() => {
     if (!videoRef.current) return;
 
     const video = videoRef.current;
+    let isCleaningUp = false;
 
     // Use HLS.js for m3u8 streams
     if (src.includes('.m3u8') && Hls.isSupported()) {
@@ -353,30 +386,39 @@ export default function VideoPlayer({
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
+        if (isCleaningUp) {
+          return;
+        }
+
         // Suppress 429 rate limit errors from being logged (they're handled by HLS.js retry logic)
         if (data.response?.code === 429) {
           return; // Let HLS.js handle retry automatically
         }
         
         if (data.fatal) {
-          // Only log if there's meaningful error information
-          const hasErrorInfo = data.type !== undefined || data.details !== undefined || data.response !== undefined || data.frag !== undefined;
-          if (hasErrorInfo) {
-            const errorInfo: Record<string, unknown> = {};
-            if (data.type !== undefined) errorInfo.type = data.type;
-            if (data.details !== undefined) errorInfo.details = data.details;
-            if (data.response) {
-              errorInfo.response = {
-                code: data.response.code,
-                text: data.response.text?.substring(0, 100), // Limit text length
-                url: data.response.url
-              };
-            }
-            if (data.frag) {
-              errorInfo.frag = { url: data.frag.url };
-            }
-            console.error('Fatal HLS error:', errorInfo);
+          // Always log fatal errors with full details
+          const errorInfo: Record<string, unknown> = {};
+          if (data.type !== undefined) errorInfo.type = data.type;
+          if (data.details !== undefined) errorInfo.details = data.details;
+          if (data.response) {
+            errorInfo.response = {
+              code: data.response.code,
+              text: data.response.text?.substring(0, 500), // Increased limit
+              url: data.response.url
+            };
           }
+          if (data.frag) {
+            errorInfo.frag = { url: data.frag.url };
+          }
+          if (data.url) {
+            errorInfo.url = data.url;
+          }
+          if (data.err) {
+            errorInfo.err = data.err;
+          }
+          errorInfo.src = src;
+          console.error('Fatal HLS error:', errorInfo);
+          logger.error('Fatal HLS error details:', errorInfo);
           
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
@@ -407,9 +449,31 @@ export default function VideoPlayer({
                 }
               }
               break;
+            case Hls.ErrorTypes.MUX_ERROR:
+            case Hls.ErrorTypes.OTHER_ERROR:
+              // For parsing/manifest errors, log details and try to recover
+              logger.error('HLS parsing/manifest error:', {
+                type: data.type,
+                details: data.details,
+                url: data.url || src,
+                response: data.response
+              });
+              // Try recreating HLS instance
+              try {
+                hls.destroy();
+                const newHls = new Hls(createHlsConfig());
+                newHls.loadSource(src);
+                newHls.attachMedia(video);
+                hlsRef.current = newHls;
+              } catch (recreateError) {
+                logger.error('Failed to recreate HLS instance after parsing error:', recreateError);
+                if (onErrorRef.current) onErrorRef.current();
+              }
+              break;
             default:
               // For other fatal errors, try to recover by recreating HLS
               logger.debug('Unknown fatal error, attempting to recover...');
+              logger.error('Unknown fatal HLS error type:', data.type, 'Details:', data.details);
               try {
                 hls.destroy();
                 const newHls = new Hls(createHlsConfig());
@@ -519,6 +583,7 @@ export default function VideoPlayer({
     const handleWaiting = () => setBuffering(true);
     const handleCanPlay = async () => {
       setBuffering(false);
+      setIsSourceStarting(false);
       
       // Check if video is playing in HDR (only check once per video load)
       if (hdrSupported && !isPlayingHDR) {
@@ -567,11 +632,27 @@ export default function VideoPlayer({
       }
     };
     const handleError = () => {
+      if (isCleaningUp) return;
+      setIsSourceStarting(false);
       if (onErrorRef.current) onErrorRef.current();
+    };
+    const handleLoadedData = () => {
+      setIsSourceStarting(false);
+    };
+    const handlePlaying = () => {
+      setIsSourceStarting(false);
+      setBuffering(false);
+    };
+    const handleLoadStart = () => {
+      setIsSourceStarting(true);
+      setBuffering(true);
     };
 
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
+    video.addEventListener('loadstart', handleLoadStart);
+    video.addEventListener('loadeddata', handleLoadedData);
+    video.addEventListener('playing', handlePlaying);
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('durationchange', handleDurationChange);
     video.addEventListener('volumechange', handleVolumeChange);
@@ -580,29 +661,49 @@ export default function VideoPlayer({
     video.addEventListener('error', handleError);
 
     return () => {
-      // Stop video playback and clear source to prevent background playback
-      video.pause();
-      video.removeAttribute('src');
-      video.load(); // Reset the video element
-      
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-      progressRestored.current = false;
-      lastSaveTime.current = 0;
+      isCleaningUp = true;
+
+      // Remove listeners first so teardown doesn't trigger source fallback logic.
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
+      video.removeEventListener('loadstart', handleLoadStart);
+      video.removeEventListener('loadeddata', handleLoadedData);
+      video.removeEventListener('playing', handlePlaying);
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('durationchange', handleDurationChange);
       video.removeEventListener('volumechange', handleVolumeChange);
       video.removeEventListener('waiting', handleWaiting);
       video.removeEventListener('canplay', handleCanPlay);
       video.removeEventListener('error', handleError);
+
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+
+      // Stop video playback and clear source to prevent background playback
+      video.pause();
+      video.removeAttribute('src');
+      video.load(); // Reset the video element
+
+      progressRestored.current = false;
+      lastSaveTime.current = 0;
     };
     // Only re-run when src changes - all other dependencies are handled via refs
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
+
+  const currentSourceLabel = sources[currentSourceIndex];
+  const currentProviderLabel = currentSourceLabel?.provider
+    ? ({
+        sanction: 'Sanction',
+        flowcast: 'Flowcast',
+        hindicast: 'HindiCast',
+        vidlink: 'Vidlink',
+      } as Record<string, string>)[currentSourceLabel.provider] || currentSourceLabel.provider
+    : 'Source';
+  const currentQualityLabel = currentSourceLabel?.quality || 'Auto';
+  const showStartupOverlay = isSourceStarting || (buffering && currentTime < 2);
 
   // Handle pausedForStillWatching separately to avoid recreating video element
   useEffect(() => {
@@ -753,10 +854,12 @@ export default function VideoPlayer({
     }
   };
 
-  // Show next episode button when there's a next episode and auto-next is enabled
-  // Show it always (not just in last 6 minutes) so users can click it anytime
+  // Show next episode button only in the last 2 minutes of the episode
   const { autoNext } = getAutoplaySettings();
-  const showNextEpisode = hasNextEpisode && type === 'tv' && autoNext && duration > 0;
+  const LAST_TWO_MINUTES = 120; // 2 minutes in seconds
+  // If episode is shorter than 2 minutes, show button from the start
+  const isInLastTwoMinutes = duration > 0 && (duration <= LAST_TWO_MINUTES || currentTime >= (duration - LAST_TWO_MINUTES));
+  const showNextEpisode = hasNextEpisode && type === 'tv' && autoNext && duration > 0 && isInLastTwoMinutes;
 
   // Handle caption selection changes
   const handleCaptionChange = (index: number) => {
@@ -790,15 +893,48 @@ export default function VideoPlayer({
         ref={videoRef}
         className="w-full h-full"
         playsInline
+        preload="auto"
         onClick={togglePlay}
         aria-label={title || 'Video player'}
       />
+
+      {/* Startup Loading Overlay */}
+      {showStartupOverlay && (
+        <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center">
+          <div className={`absolute inset-0 ${
+            isNoirFlix ? 'bg-[#050505]/78' : 'bg-black/70'
+          }`} />
+          <div className="relative flex flex-col items-center text-center px-6 max-w-md">
+            <div className={`w-14 h-14 border-4 rounded-full animate-spin mb-4 ${
+              isNoirFlix ? 'border-white/40 border-t-white' : 'border-white/35 border-t-netflix-red'
+            }`} />
+            <div className="text-white font-semibold text-lg">
+              Loading stream...
+            </div>
+            <div className="text-white/80 text-sm mt-1">
+              {currentProviderLabel} • {currentQualityLabel}
+            </div>
+            {startupElapsedSeconds >= 4 && (
+              <div className="text-white/70 text-xs mt-3">
+                Some sources take a bit longer to initialize.
+              </div>
+            )}
+            {startupElapsedSeconds >= 10 && (
+              <div className="text-white/60 text-xs mt-1">
+                Still loading ({startupElapsedSeconds}s)... Flowcast can take 10-30s on some episodes.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Custom Subtitle Overlay */}
       {currentSubtitle && (
         <div className="absolute bottom-24 left-0 right-0 flex justify-center pointer-events-none z-20">
           <div 
-            className="bg-black/80 px-4 py-2 rounded text-white text-lg md:text-xl font-medium max-w-[80%] text-center"
+            className={`px-4 py-2 rounded text-white text-lg md:text-xl font-medium max-w-[80%] text-center ${
+              isNoirFlix ? 'bg-[#050505]/90 border border-[#1a1a1a]' : 'bg-black/80'
+            }`}
             style={{ 
               textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
               whiteSpace: 'pre-line'
@@ -817,7 +953,9 @@ export default function VideoPlayer({
               e.stopPropagation();
               handleSkipIntro();
             }}
-            className="bg-white/95 hover:bg-white text-black px-6 py-3 rounded-md flex items-center gap-2 transition-all duration-200 hover:scale-105 shadow-xl font-semibold text-lg pointer-events-auto"
+            className={`bg-white/95 hover:bg-white text-black px-6 py-3 rounded-md flex items-center gap-2 transition-all duration-200 hover:scale-105 shadow-xl pointer-events-auto ${
+              isNoirFlix ? 'font-mono text-xs uppercase tracking-[2px]' : 'font-semibold text-lg'
+            }`}
             aria-label="Skip intro"
           >
             <span>Skip Intro</span>
@@ -847,7 +985,9 @@ export default function VideoPlayer({
             onMouseDown={(e) => {
               e.stopPropagation();
             }}
-            className="bg-white/95 hover:bg-white text-black px-6 py-3 rounded-md flex items-center gap-2 transition-all duration-200 hover:scale-105 shadow-xl font-semibold text-lg pointer-events-auto cursor-pointer"
+            className={`bg-white/95 hover:bg-white text-black px-6 py-3 rounded-md flex items-center gap-2 transition-all duration-200 hover:scale-105 shadow-xl pointer-events-auto cursor-pointer ${
+              isNoirFlix ? 'font-mono text-xs uppercase tracking-[2px]' : 'font-semibold text-lg'
+            }`}
             aria-label="Play next episode"
             type="button"
           >
@@ -860,22 +1000,32 @@ export default function VideoPlayer({
       )}
 
       {/* Buffering Spinner */}
-      {buffering && (
+      {buffering && !showStartupOverlay && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
-          <div className="w-16 h-16 border-4 border-netflix-red border-t-transparent rounded-full animate-spin" />
+          <div className={`w-16 h-16 border-4 rounded-full animate-spin ${
+            isNoirFlix 
+              ? 'border-white/40 border-t-transparent' 
+              : 'border-netflix-red border-t-transparent'
+          }`} />
         </div>
       )}
 
       {/* Controls Overlay */}
       <div 
-        className={`absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/50 transition-opacity duration-300 pointer-events-none z-30 ${
+        className={`absolute inset-0 transition-opacity duration-300 pointer-events-none z-30 ${
           showControls ? 'opacity-100' : 'opacity-0'
+        } ${
+          isNoirFlix
+            ? 'bg-gradient-to-t from-[#050505]/95 via-transparent to-[#050505]/50'
+            : 'bg-gradient-to-t from-black/90 via-transparent to-black/50'
         }`}
       >
         {/* Title Above Progress Bar */}
         {title && (
           <div className="absolute bottom-20 left-4 pointer-events-none">
-            <h2 className="text-white text-2xl font-bold drop-shadow-lg">
+            <h2 className={`text-2xl font-bold drop-shadow-lg ${
+              isNoirFlix ? 'text-white font-black uppercase tracking-[-1px]' : 'text-white'
+            }`}>
               {title}
             </h2>
           </div>
@@ -889,10 +1039,16 @@ export default function VideoPlayer({
                 e.stopPropagation();
                 togglePlay();
               }}
-              className="w-20 h-20 rounded-full bg-netflix-red/90 hover:bg-netflix-red flex items-center justify-center transition-all duration-300 hover:scale-110 pointer-events-auto shadow-2xl shadow-netflix-red/60 hover:shadow-3xl glow-red-hover"
+              className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110 pointer-events-auto shadow-2xl ${
+                isNoirFlix
+                  ? 'bg-white/95 hover:bg-white border border-[#1a1a1a] shadow-white/20 hover:shadow-white/40'
+                  : 'bg-netflix-red/90 hover:bg-netflix-red shadow-netflix-red/60 hover:shadow-3xl glow-red-hover'
+              }`}
               aria-label={isPlaying ? 'Pause video' : 'Play video'}
             >
-              <svg className="w-10 h-10 text-white ml-1" viewBox="0 0 24 24" fill="currentColor">
+              <svg className={`w-10 h-10 ml-1 ${
+                isNoirFlix ? 'text-[#050505]' : 'text-white'
+              }`} viewBox="0 0 24 24" fill="currentColor">
                 <path d="M8 5v14l11-7z" />
               </svg>
             </button>
@@ -911,20 +1067,27 @@ export default function VideoPlayer({
               onChange={handleSeek}
               onClick={(e) => e.stopPropagation()}
               aria-label="Seek video"
-              className="w-full h-1 bg-gray-600 rounded-full appearance-none cursor-pointer
+              className={`w-full h-1 rounded-full appearance-none cursor-pointer
                 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 
-                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-netflix-red 
-                [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:opacity-0 
+                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:opacity-0 
                 group-hover/progress:[&::-webkit-slider-thumb]:opacity-100
-                [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-full"
+                [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-full ${
+                  isNoirFlix
+                    ? '[&::-webkit-slider-thumb]:bg-white'
+                    : '[&::-webkit-slider-thumb]:bg-netflix-red'
+                }`}
               style={{
-                background: `linear-gradient(to right, #e50914 ${(currentTime / duration) * 100}%, #4b5563 ${(currentTime / duration) * 100}%)`
+                background: isNoirFlix
+                  ? `linear-gradient(to right, #ffffff ${(currentTime / duration) * 100}%, #1a1a1a ${(currentTime / duration) * 100}%)`
+                  : `linear-gradient(to right, #e50914 ${(currentTime / duration) * 100}%, #4b5563 ${(currentTime / duration) * 100}%)`
               }}
             />
           </div>
 
           {/* Control Buttons */}
-          <div className="flex items-center justify-between text-white">
+          <div className={`flex items-center justify-between ${
+            isNoirFlix ? 'text-white' : 'text-white'
+          }`}>
             <div className="flex items-center space-x-4">
               {/* Play/Pause */}
               <button
@@ -932,7 +1095,9 @@ export default function VideoPlayer({
                   e.stopPropagation();
                   togglePlay();
                 }}
-                className="hover:text-netflix-red transition-all duration-200 hover:scale-110 hover:shadow-lg"
+                className={`transition-all duration-200 hover:scale-110 hover:shadow-lg ${
+                  isNoirFlix ? 'hover:text-white' : 'hover:text-netflix-red'
+                }`}
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? (
@@ -1011,21 +1176,29 @@ export default function VideoPlayer({
                   onChange={handleVolumeChange}
                   onClick={(e) => e.stopPropagation()}
                   aria-label="Volume control"
-                  className="w-0 group-hover/volume:w-20 transition-all h-1 bg-gray-600 rounded-full appearance-none cursor-pointer
+                  className={`w-0 group-hover/volume:w-20 transition-all h-1 rounded-full appearance-none cursor-pointer
                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 
                     [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white 
-                    [&::-webkit-slider-thumb]:cursor-pointer"
+                    [&::-webkit-slider-thumb]:cursor-pointer ${
+                      isNoirFlix ? 'bg-[#1a1a1a]' : 'bg-gray-600'
+                    }`}
                 />
               </div>
 
               {/* Time */}
-              <div className="text-sm font-medium">
+              <div className={`text-sm font-medium ${
+                isNoirFlix ? 'font-mono text-xs' : ''
+              }`}>
                 {formatTime(currentTime)} / {formatTime(duration)}
               </div>
 
               {/* HDR Indicator */}
               {isPlayingHDR && (
-                <div className="flex items-center gap-1 px-2 py-1 bg-netflix-red/20 rounded text-xs font-semibold text-netflix-red border border-netflix-red/30">
+                <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold border ${
+                  isNoirFlix
+                    ? 'bg-white/10 text-white border-white/30'
+                    : 'bg-netflix-red/20 text-netflix-red border-netflix-red/30'
+                }`}>
                   <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18l8 4v8.64l-8 4-8-4V8.18l8-4z"/>
                     <path d="M12 8l-4 2v4l4 2 4-2v-4l-4-2zm0 2.18l2 1v1.64l-2 1-2-1v-1.64l2-1z"/>
@@ -1045,8 +1218,10 @@ export default function VideoPlayer({
                       setShowCaptionMenu(!showCaptionMenu);
                       setShowSettings(false);
                     }}
-                    className={`hover:text-netflix-red transition-all duration-200 hover:scale-110 hover:shadow-lg ${
-                      selectedCaptionIndex >= 0 ? 'text-netflix-red' : ''
+                    className={`transition-all duration-200 hover:scale-110 hover:shadow-lg ${
+                      isNoirFlix
+                        ? `hover:text-white ${selectedCaptionIndex >= 0 ? 'text-white' : ''}`
+                        : `hover:text-netflix-red ${selectedCaptionIndex >= 0 ? 'text-netflix-red' : ''}`
                     }`}
                     title="Subtitles"
                     aria-label="Toggle subtitles menu"
@@ -1060,9 +1235,17 @@ export default function VideoPlayer({
 
                   {/* Caption Menu Dropdown */}
                   {showCaptionMenu && (
-                    <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-sm rounded-lg overflow-hidden min-w-[200px] shadow-2xl ring-1 ring-white/10">
-                      <div className="px-4 py-2 border-b border-gray-700">
-                        <div className="text-white text-sm font-semibold">Subtitles</div>
+                    <div className={`absolute bottom-full right-0 mb-2 backdrop-blur-sm rounded-lg overflow-hidden min-w-[200px] shadow-2xl ${
+                      isNoirFlix
+                        ? 'bg-[#0a0a0a] border border-[#1a1a1a]'
+                        : 'bg-black/95 ring-1 ring-white/10'
+                    }`}>
+                      <div className={`px-4 py-2 border-b ${
+                        isNoirFlix ? 'border-[#1a1a1a]' : 'border-gray-700'
+                      }`}>
+                        <div className={`text-sm font-semibold ${
+                          isNoirFlix ? 'text-white font-mono uppercase text-xs tracking-[1px]' : 'text-white'
+                        }`}>Subtitles</div>
                       </div>
                       <div className="max-h-60 overflow-y-auto">
                         {/* Off option */}
@@ -1073,8 +1256,12 @@ export default function VideoPlayer({
                           }}
                           className={`w-full px-4 py-2 text-left text-sm transition-colors ${
                             selectedCaptionIndex === -1
-                              ? 'bg-netflix-red text-white'
-                              : 'text-gray-300 hover:bg-gray-800'
+                              ? isNoirFlix
+                                ? 'bg-white text-[#050505]'
+                                : 'bg-netflix-red text-white'
+                              : isNoirFlix
+                                ? 'text-[#888] hover:bg-[rgba(255,255,255,0.03)]'
+                                : 'text-gray-300 hover:bg-gray-800'
                           }`}
                         >
                           <div className="flex items-center justify-between">
@@ -1097,8 +1284,12 @@ export default function VideoPlayer({
                             }}
                             className={`w-full px-4 py-2 text-left text-sm transition-colors ${
                               selectedCaptionIndex === index
-                                ? 'bg-netflix-red text-white'
-                                : 'text-gray-300 hover:bg-gray-800'
+                                ? isNoirFlix
+                                  ? 'bg-white text-[#050505]'
+                                  : 'bg-netflix-red text-white'
+                                : isNoirFlix
+                                  ? 'text-[#888] hover:bg-[rgba(255,255,255,0.03)]'
+                                  : 'text-gray-300 hover:bg-gray-800'
                             }`}
                           >
                             <div className="flex items-center justify-between">
@@ -1117,87 +1308,26 @@ export default function VideoPlayer({
                 </div>
               )}
 
-              {/* Settings Menu */}
-              {sources.length > 1 && (
-                <div className="relative">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowSettings(!showSettings);
-                      setShowCaptionMenu(false);
-                    }}
-                    className="hover:text-netflix-red transition-all duration-200 hover:scale-110 hover:shadow-lg"
-                    title="Settings"
-                    aria-label="Toggle settings menu"
-                    aria-expanded={showSettings}
-                    aria-haspopup="true"
-                  >
-                    <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
-                      <circle cx="12" cy="5" r="2"/>
-                      <circle cx="12" cy="12" r="2"/>
-                      <circle cx="12" cy="19" r="2"/>
-                    </svg>
-                  </button>
-
-                  {/* Settings Dropdown */}
-                  {showSettings && (
-                    <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-sm rounded-lg overflow-hidden min-w-[240px] shadow-2xl ring-1 ring-white/10">
-                      <div className="px-4 py-2 border-b border-gray-700">
-                        <div className="text-white text-sm font-semibold">Source Quality</div>
-                      </div>
-                      <div className="max-h-80 overflow-y-auto">
-                        {/* Group sources by provider */}
-                        {(() => {
-                          const providers = Array.from(new Set(sources.map(s => s.provider || 'unknown')));
-                          return providers.map(provider => {
-                            const providerSources = sources
-                              .map((source, index) => ({ ...source, originalIndex: index }))
-                              .filter(s => (s.provider || 'unknown') === provider);
-                            
-                            const providerLabel = provider === 'sanction' ? 'Sanction' 
-                              : provider === 'flowcast' ? 'Flowcast'
-                              : provider;
-                            
-                            return (
-                              <div key={provider}>
-                                <div className="px-4 py-1.5 bg-gray-900 text-xs font-semibold text-netflix-red uppercase tracking-wider">
-                                  {providerLabel}
-                                </div>
-                                {providerSources.map((source) => (
-                                  <button
-                                    key={source.originalIndex}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (onSourceChange) {
-                                        onSourceChange(source.originalIndex);
-                                      }
-                                      setShowSettings(false);
-                                    }}
-                                    className={`w-full px-4 py-2 text-left text-sm transition-colors ${
-                                      source.originalIndex === currentSourceIndex
-                                        ? 'bg-netflix-red text-white'
-                                        : 'text-gray-300 hover:bg-gray-800'
-                                    }`}
-                                  >
-                                    <div className="flex items-center justify-between">
-                                      <span>{source.quality}</span>
-                                      {source.originalIndex === currentSourceIndex && (
-                                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                                        </svg>
-                                      )}
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Source Selection Menu */}
+              {sources.length > 1 && (() => {
+                // Normalize provider names - map 'rivestream' to 'flowcast' for display
+                const normalizedProviders = sources.map(s => {
+                  const provider = s.provider || 'unknown';
+                  return provider === 'rivestream' ? 'flowcast' : provider;
+                });
+                const providers = Array.from(new Set(normalizedProviders));
+                
+                return (
+                  <SourceProviderMenu
+                    providers={providers}
+                    sources={sources}
+                    providerHealth={providerHealth}
+                    currentSourceIndex={currentSourceIndex}
+                    onSourceChange={onSourceChange}
+                    isNoirFlix={isNoirFlix}
+                  />
+                );
+              })()}
 
               {/* Fullscreen */}
               <button
@@ -1221,6 +1351,199 @@ export default function VideoPlayer({
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Source Provider Menu Component
+function SourceProviderMenu({ 
+  providers, 
+  sources, 
+  providerHealth,
+  currentSourceIndex, 
+  onSourceChange,
+  isNoirFlix 
+}: { 
+  providers: string[]; 
+  sources: Array<{ url: string; quality: string; provider?: string }>; 
+  providerHealth: Record<string, 'checking' | 'ok' | 'failed'>;
+  currentSourceIndex: number; 
+  onSourceChange?: (index: number) => void;
+  isNoirFlix: boolean;
+}) {
+  const [hoveredProvider, setHoveredProvider] = useState<string | null>(null);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const parseQualityRank = (quality?: string | number): number => {
+    if (!quality) return -1;
+    const q = String(quality).toLowerCase();
+    if (q === 'auto') return 0;
+    if (q === '4k') return 2160;
+    const match = q.match(/(\d{3,4})p/);
+    if (match) return parseInt(match[1], 10);
+    const num = q.match(/(\d{3,4})/);
+    return num ? parseInt(num[1], 10) : -1;
+  };
+
+  const hasSpecificQuality = (quality?: string | number): boolean => {
+    if (!quality) return false;
+    const q = String(quality).trim().toLowerCase();
+    return q !== '' && q !== 'unknown' && q !== 'auto';
+  };
+  
+  // Clear timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
+  
+  const handleMouseEnter = (provider: string) => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    setHoveredProvider(provider);
+  };
+  
+  const handleMouseLeave = () => {
+    // Add a small delay before hiding to allow moving to dropdown
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredProvider(null);
+    }, 200);
+  };
+  
+  return (
+    <div className="relative">
+      <div className="flex items-center gap-2">
+        {providers.map(provider => {
+          const providerSources = sources
+            .map((source, index) => ({ ...source, originalIndex: index }))
+            .filter(s => {
+              const sourceProvider = s.provider || 'unknown';
+              // Normalize provider names - handle both 'flowcast' and 'rivestream'
+              const normalizedSourceProvider = sourceProvider === 'rivestream' ? 'flowcast' : sourceProvider;
+              return normalizedSourceProvider === provider;
+            })
+            .sort((a, b) => parseQualityRank(b.quality) - parseQualityRank(a.quality));
+          
+          // Skip if no sources found after filtering
+          if (providerSources.length === 0) return null;
+          
+          const currentProviderSource = providerSources.find(s => s.originalIndex === currentSourceIndex);
+          const health = providerHealth[provider] || 'checking';
+          const providerDisabled = health === 'failed' && !currentProviderSource;
+          const providerLabel = provider === 'sanction' ? 'Sanction' 
+            : provider === 'flowcast' ? 'Flowcast'
+            : provider === 'hindicast' ? 'HindiCast'
+            : provider === 'vidlink' ? 'VidLink'
+            : provider.charAt(0).toUpperCase() + provider.slice(1);
+          
+          return (
+            <div
+              key={provider}
+              className="relative"
+              onMouseEnter={() => handleMouseEnter(provider)}
+              onMouseLeave={handleMouseLeave}
+            >
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (providerDisabled) return;
+                  // If clicking provider with multiple qualities, toggle menu
+                  if (providerSources.length > 1) {
+                    setHoveredProvider(hoveredProvider === provider ? null : provider);
+                  } else if (providerSources.length === 1 && onSourceChange) {
+                    // If only one quality, switch directly
+                    onSourceChange(providerSources[0].originalIndex);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${
+                  providerDisabled
+                    ? isNoirFlix
+                      ? 'bg-[rgba(255,255,255,0.05)] text-white/35 cursor-not-allowed'
+                      : 'bg-gray-900 text-gray-500 cursor-not-allowed'
+                    :
+                  currentProviderSource
+                    ? isNoirFlix
+                      ? 'bg-white text-[#050505]'
+                      : 'bg-netflix-red text-white'
+                    : isNoirFlix
+                      ? 'bg-[rgba(255,255,255,0.1)] text-white hover:bg-[rgba(255,255,255,0.2)]'
+                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                }`}
+                title={providerSources.length > 1 ? `${providerLabel} - ${providerSources.length} qualities` : providerLabel}
+              >
+                {providerLabel}
+                {health === 'checking' && (
+                  <span className="ml-1 text-xs opacity-70">...</span>
+                )}
+                {health === 'failed' && (
+                  <span className="ml-1 text-xs opacity-70">x</span>
+                )}
+                {currentProviderSource && hasSpecificQuality(currentProviderSource.quality) && (
+                  <span className="ml-1 text-xs opacity-75">({currentProviderSource.quality})</span>
+                )}
+              </button>
+
+              {/* Quality Dropdown on Hover */}
+              {hoveredProvider === provider && providerSources.length > 1 && !providerDisabled && (
+                <div 
+                  className={`absolute bottom-full right-0 mb-2 backdrop-blur-sm rounded-lg overflow-hidden min-w-[180px] shadow-2xl z-50 ${
+                    isNoirFlix
+                      ? 'bg-[#0a0a0a] border border-[#1a1a1a]'
+                      : 'bg-black/95 ring-1 ring-white/10'
+                  }`}
+                  onMouseEnter={() => handleMouseEnter(provider)}
+                  onMouseLeave={handleMouseLeave}
+                >
+                  <div className={`px-3 py-2 border-b ${
+                    isNoirFlix ? 'border-[#1a1a1a]' : 'border-gray-700'
+                  }`}>
+                    <div className={`text-xs font-semibold ${
+                      isNoirFlix ? 'text-white font-mono uppercase tracking-[1px]' : 'text-white'
+                    }`}>{providerLabel} Quality</div>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto">
+                    {providerSources.map((source) => (
+                      <button
+                        key={source.originalIndex}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (providerDisabled) return;
+                          if (onSourceChange) {
+                            onSourceChange(source.originalIndex);
+                          }
+                          setHoveredProvider(null);
+                        }}
+                        className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                          source.originalIndex === currentSourceIndex
+                            ? isNoirFlix
+                              ? 'bg-white text-[#050505]'
+                              : 'bg-netflix-red text-white'
+                            : isNoirFlix
+                              ? 'text-[#888] hover:bg-[rgba(255,255,255,0.03)]'
+                              : 'text-gray-300 hover:bg-gray-800'
+                        }`}
+                        >
+                          <div className="flex items-center justify-between">
+                          <span>{hasSpecificQuality(source.quality) ? source.quality : 'Auto'}</span>
+                          {source.originalIndex === currentSourceIndex && (
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

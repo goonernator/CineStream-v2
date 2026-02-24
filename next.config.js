@@ -12,6 +12,8 @@ const nextConfig = {
   },
   // For Electron: serve static files correctly
   assetPrefix: process.env.ELECTRON ? './' : undefined,
+  // Exclude puppeteer from server-side bundling to prevent Turbopack issues
+  serverExternalPackages: ['puppeteer'],
   // Add headers for CORS
   async headers() {
     return [

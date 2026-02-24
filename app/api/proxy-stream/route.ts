@@ -17,14 +17,22 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Build the tlo.sh API URL (using public /stream/api endpoint, not v3)
-    // Movies: https://tlo.sh/stream/api/movie/TMDB_ID
-    // TV: https://tlo.sh/stream/api/tv/TMDB_ID/SEASON/EPISODE
-    const STREAMING_BASE_URL = 'https://tlo.sh/stream/api';
+    // Use tlo.sh v3 API from environment variable (not exposed on GitHub)
+    // Movies: https://tlo.sh/v3/api/streams/movie/TMDB_ID
+    // TV: https://tlo.sh/v3/api/streams/tv/TMDB_ID/SEASON/EPISODE
+    const TLO_V3_BASE_URL = process.env.TLO_V3_BASE_URL;
+    
+    if (!TLO_V3_BASE_URL) {
+      return NextResponse.json(
+        { error: 'Streaming API not configured' },
+        { status: 503 }
+      );
+    }
+    
     let streamUrl: string;
 
     if (type === 'movie') {
-      streamUrl = `${STREAMING_BASE_URL}/movie/${tmdbId}`;
+      streamUrl = `${TLO_V3_BASE_URL}/movie/${tmdbId}`;
     } else if (type === 'tv') {
       if (!season || !episode) {
         return NextResponse.json(
@@ -32,7 +40,7 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      streamUrl = `${STREAMING_BASE_URL}/tv/${tmdbId}/${season}/${episode}`;
+      streamUrl = `${TLO_V3_BASE_URL}/tv/${tmdbId}/${season}/${episode}`;
     } else {
       return NextResponse.json(
         { error: 'Invalid type parameter' },

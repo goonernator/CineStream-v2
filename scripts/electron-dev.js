@@ -1,10 +1,9 @@
 const { spawn } = require('child_process');
-const { exec } = require('child_process');
 const path = require('path');
 
 // Start Next.js dev server
-console.log('Starting Next.js dev server...');
-const nextDev = spawn('npm', ['run', 'dev'], {
+console.log('Starting Next.js dev server (webpack mode)...');
+const nextDev = spawn('npx', ['next', 'dev', '--webpack', '-p', '42069'], {
   stdio: 'inherit',
   shell: true,
   cwd: path.join(__dirname, '..'),

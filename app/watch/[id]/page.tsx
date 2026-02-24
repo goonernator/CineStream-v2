@@ -5,9 +5,11 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import StreamPlayer from '@/components/StreamPlayer';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import StillWatchingModal from '@/components/StillWatchingModal';
+import { useLayout } from '@/components/LayoutProvider';
 import { streaming } from '@/lib/streaming';
 import { tmdb } from '@/lib/tmdb';
 import { watchProgress } from '@/lib/watchProgress';
+import { episodeAvailabilityCache } from '@/lib/episodeAvailability';
 import { logger } from '@/lib/logger';
 import type { Movie, TVShow } from '@/lib/types';
 import type { StreamSource, StreamCaption } from '@/lib/streaming';
@@ -16,6 +18,8 @@ export default function WatchPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { layout } = useLayout();
+  const isNoirFlix = layout === 'noirflix';
   const [mediaItem, setMediaItem] = useState<Movie | TVShow | null>(null);
   const [streamSources, setStreamSources] = useState<StreamSource[]>([]);
   const [captions, setCaptions] = useState<StreamCaption[]>([]);
@@ -144,6 +148,8 @@ export default function WatchPage() {
           
           logger.debug('TV sources:', result.sources, 'Captions:', result.captions);
           clearTimeout(loadingTimeout);
+          // Persist availability status for details-page episode badges.
+          episodeAvailabilityCache.set(id, season, episode, result.sources.length > 0);
           if (result.sources.length === 0) {
             setError(`Unable to find streaming sources for Season ${season}, Episode ${episode}. Please try again later or check back soon.`);
           }
@@ -245,9 +251,13 @@ export default function WatchPage() {
             </p>
             <button
               onClick={() => router.back()}
-              className="px-6 py-2 bg-netflix-red hover:bg-red-600 transition-all duration-300 rounded-lg shadow-lg shadow-netflix-red/50 hover:shadow-xl hover:shadow-netflix-red/70 hover:-translate-y-1"
+              className={`px-6 py-2 transition-all duration-300 rounded-lg ${
+                isNoirFlix
+                  ? 'font-mono text-xs border border-[#1a1a1a] px-5 py-2 hover:bg-white hover:text-black text-white/80 uppercase tracking-[2px]'
+                  : 'bg-netflix-red hover:bg-red-600 shadow-lg shadow-netflix-red/50 hover:shadow-xl hover:shadow-netflix-red/70 hover:-translate-y-1'
+              }`}
             >
-              ← Go Back
+              {isNoirFlix ? '← GO BACK' : '← Go Back'}
             </button>
           </div>
         </div>
@@ -269,9 +279,13 @@ export default function WatchPage() {
                 </div>
                 <button
                   onClick={() => router.back()}
-                  className="px-6 py-2 bg-netflix-red hover:bg-red-600 transition-all duration-300 rounded-lg shadow-lg shadow-netflix-red/50 hover:shadow-xl hover:shadow-netflix-red/70 hover:-translate-y-1"
+                  className={`px-6 py-2 transition-all duration-300 rounded-lg ${
+                    isNoirFlix
+                      ? 'font-mono text-xs border border-[#1a1a1a] px-5 py-2 hover:bg-white hover:text-black text-white/80 uppercase tracking-[2px]'
+                      : 'bg-netflix-red hover:bg-red-600 shadow-lg shadow-netflix-red/50 hover:shadow-xl hover:shadow-netflix-red/70 hover:-translate-y-1'
+                  }`}
                 >
-                  ← Go Back
+                  {isNoirFlix ? '← GO BACK' : '← Go Back'}
                 </button>
               </div>
             </div>
@@ -297,9 +311,13 @@ export default function WatchPage() {
         }`}>
           <button
             onClick={() => router.back()}
-            className="px-4 py-2 bg-netflix-red hover:bg-red-600 transition-all duration-300 rounded-lg pointer-events-auto shadow-lg shadow-netflix-red/50 hover:shadow-xl hover:shadow-netflix-red/70 hover:-translate-y-1"
+            className={`pointer-events-auto transition-all duration-300 ${
+              isNoirFlix
+                ? 'font-mono text-xs border border-[#1a1a1a] px-5 py-2 hover:bg-white hover:text-black text-white/80 uppercase tracking-[2px]'
+                : 'px-4 py-2 bg-netflix-red hover:bg-red-600 rounded-lg shadow-lg shadow-netflix-red/50 hover:shadow-xl hover:shadow-netflix-red/70 hover:-translate-y-1'
+            }`}
           >
-            ← Back
+            {isNoirFlix ? '← BACK' : '← Back'}
           </button>
         </div>
       </div>
@@ -317,4 +335,3 @@ export default function WatchPage() {
     </div>
   );
 }
-

@@ -9,7 +9,7 @@ import EpisodeCard from '@/components/EpisodeCard';
 import { DetailsSkeleton, CastSkeleton, EpisodeListSkeleton } from '@/components/DetailsSkeleton';
 import { tmdb, TMDB_IMAGE_BASE } from '@/lib/tmdb';
 import { watchProgress } from '@/lib/watchProgress';
-import { streaming } from '@/lib/streaming';
+import { episodeAvailabilityCache } from '@/lib/episodeAvailability';
 import { auth } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import type { Movie, TVShow, Video, Episode, CastMember } from '@/lib/types';
@@ -220,50 +220,19 @@ export default function DetailsPage() {
           setSelectedEpisode(1);
         }
         
-        // Check availability for all episodes (in batches to avoid overwhelming the API)
-        checkEpisodeAvailability(tvId, seasonNumber, loadedEpisodes);
+        // Only read cached availability discovered during actual playback.
+        setEpisodeAvailability(
+          episodeAvailabilityCache.getSeasonMap(
+            tvId,
+            seasonNumber,
+            loadedEpisodes.map(ep => ep.episode_number)
+          )
+        );
       }
     } catch (error) {
       logger.error('Failed to load episodes:', error);
     } finally {
       setLoadingEpisodes(false);
-    }
-  };
-
-  const checkEpisodeAvailability = async (tvId: number, seasonNumber: number, episodes: Episode[]) => {
-    // Check availability in batches of 5 to avoid overwhelming the API
-    const batchSize = 5;
-    const availabilityMap = new Map<number, boolean>();
-    
-    for (let i = 0; i < episodes.length; i += batchSize) {
-      const batch = episodes.slice(i, i + batchSize);
-      
-      // Check all episodes in batch in parallel
-      const availabilityChecks = await Promise.allSettled(
-        batch.map(async (episode) => {
-          try {
-            const result = await streaming.getTVStreamSourcesAsync(tvId, seasonNumber, episode.episode_number);
-            return { episodeNumber: episode.episode_number, available: result.sources.length > 0 };
-          } catch (error) {
-            return { episodeNumber: episode.episode_number, available: false };
-          }
-        })
-      );
-      
-      // Update availability map with results
-      availabilityChecks.forEach((result) => {
-        if (result.status === 'fulfilled') {
-          availabilityMap.set(result.value.episodeNumber, result.value.available);
-        }
-      });
-      
-      // Update state after each batch to show progress
-      setEpisodeAvailability(new Map(availabilityMap));
-      
-      // Small delay between batches to be respectful to the API
-      if (i + batchSize < episodes.length) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
     }
   };
 

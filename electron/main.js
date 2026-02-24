@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, net } = require('electron');
+const { app, BrowserWindow, protocol, net, session } = require('electron');
 const path = require('path');
 const isDev = !app.isPackaged;
 
@@ -17,15 +17,121 @@ app.whenReady().then(() => {
     }
     
     try {
+      // IMPORTANT: Do not decode valid URLs here.
+      // Some providers include nested percent-encoded query params (e.g. Valhalla `url=`).
+      // Decoding the full outer URL corrupts signatures and nested params.
+      let decodedTargetUrl = targetUrl;
+      try {
+        new URL(decodedTargetUrl);
+      } catch {
+        decodedTargetUrl = decodeURIComponent(targetUrl);
+      }
+      
+      // Check if this is a vidlink URL that needs special headers
+      const isVidlink = decodedTargetUrl.includes('storm.vodvidl.site') || 
+                       decodedTargetUrl.includes('vodvidl.site') ||
+                       targetUrl.includes('storm.vodvidl.site') || 
+                       targetUrl.includes('vodvidl.site');
+      
+      // Extract headers from URL if present (for vidlink)
+      let refererUrl = 'https://vidlink.pro/';
+      let cleanUrl = decodedTargetUrl;
+      let hintedHeaders = {};
+      
+      if (isVidlink) {
+        try {
+          const urlObj = new URL(decodedTargetUrl);
+          const headersParam = urlObj.searchParams.get('headers');
+          if (headersParam) {
+            try {
+              const parsedHeaders = JSON.parse(headersParam);
+              if (parsedHeaders.referer) {
+                refererUrl = parsedHeaders.referer;
+              }
+            } catch {
+              try {
+                const decoded = decodeURIComponent(headersParam);
+                const parsedHeaders = JSON.parse(decoded);
+                if (parsedHeaders.referer) {
+                  refererUrl = parsedHeaders.referer;
+                }
+              } catch {
+                // Use default if parsing fails
+              }
+            }
+          }
+          
+          // Remove headers param from URL before fetching
+          urlObj.searchParams.delete('headers');
+          cleanUrl = urlObj.toString();
+        } catch (e) {
+          // If URL parsing fails, use original URL
+        }
+      }
+
+      // Generic upstream header hints (used by Rivestream/Valhalla proxy URLs)
+      try {
+        const hintedUrlObj = new URL(decodedTargetUrl);
+        const headersParam = hintedUrlObj.searchParams.get('headers');
+        if (headersParam) {
+          try {
+            hintedHeaders = JSON.parse(headersParam);
+          } catch {
+            try {
+              hintedHeaders = JSON.parse(decodeURIComponent(headersParam));
+            } catch {
+              hintedHeaders = {};
+            }
+          }
+        }
+      } catch {}
+
+      let isValhallaProxy = false;
+      try {
+        isValhallaProxy = new URL(cleanUrl).hostname.includes('valhallastream');
+      } catch {}
+      
       // Use Electron's net.request to bypass CORS
       return new Promise((resolve, reject) => {
         const netRequest = net.request({
-          url: decodeURIComponent(targetUrl),
+          url: cleanUrl,
           method: 'GET',
         });
         
-        netRequest.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        netRequest.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
         netRequest.setHeader('Accept', '*/*');
+        netRequest.setHeader('Accept-Encoding', 'identity');
+        netRequest.setHeader('Accept-Language', 'en-US,en;q=0.9');
+
+        // Forward range requests for MP4/segment playback.
+        // Valhalla proxy often rejects non-range GETs, so default to bytes=0-.
+        if (request.headers && (request.headers.Range || request.headers.range)) {
+          netRequest.setHeader('Range', request.headers.Range || request.headers.range);
+        } else if (isValhallaProxy) {
+          netRequest.setHeader('Range', 'bytes=0-');
+        }
+
+        // Valhalla expects the outer request to look like Rivestream.
+        // Any nested `headers=` query param is for Valhalla to forward to the inner target.
+        if (isValhallaProxy) {
+          netRequest.setHeader('Referer', 'https://rivestream.org/');
+          netRequest.setHeader('Origin', 'https://rivestream.org');
+        } else if (hintedHeaders && typeof hintedHeaders === 'object') {
+          const hintedReferer = hintedHeaders.Referer || hintedHeaders.referer;
+          const hintedOrigin = hintedHeaders.Origin || hintedHeaders.origin;
+          if (hintedReferer) netRequest.setHeader('Referer', hintedReferer);
+          if (hintedOrigin) netRequest.setHeader('Origin', hintedOrigin);
+        }
+        
+        // Add vidlink headers if needed
+        // Electron's net.request blocks Referer headers for cross-origin requests
+        // We'll set Origin but skip Referer to avoid ERR_BLOCKED_BY_CLIENT
+        // The vidlink server might work with just Origin, or we may need a different approach
+        if (isVidlink) {
+          netRequest.setHeader('Origin', 'https://vidlink.pro');
+          // Don't set Referer - Electron blocks it and causes ERR_BLOCKED_BY_CLIENT
+          // The server might accept requests with just Origin header
+        }
         
         netRequest.on('response', (response) => {
           const chunks = [];
@@ -51,10 +157,23 @@ app.whenReady().then(() => {
             const contentType = headers['content-type'] || 'application/octet-stream';
             
             // Check if this is an m3u8 playlist
-            if (targetUrl.includes('.m3u8') || contentType.includes('mpegurl')) {
+            if (cleanUrl.includes('.m3u8') || contentType.includes('mpegurl')) {
               // Rewrite URLs in the playlist
               let manifestText = buffer.toString('utf8');
-              const baseUrl = new URL(targetUrl);
+              
+              // Validate that this is actually an m3u8 file
+              if (!manifestText.trim().startsWith('#EXTM3U') && !manifestText.includes('#EXT')) {
+                console.error('Invalid m3u8 response - does not start with #EXTM3U:', {
+                  url: cleanUrl.substring(0, 200),
+                  contentType,
+                  firstChars: manifestText.substring(0, 200),
+                  status: response.statusCode
+                });
+                reject(new Response(`Invalid m3u8 file: The response does not appear to be a valid HLS playlist. First 500 chars: ${manifestText.substring(0, 500)}`, { status: 500 }));
+                return;
+              }
+              
+              const baseUrl = new URL(cleanUrl);
               const basePath = baseUrl.origin + baseUrl.pathname.substring(0, baseUrl.pathname.lastIndexOf('/') + 1);
               
               manifestText = manifestText.split('\n').map(line => {

@@ -5,6 +5,10 @@
 
 # testing
 /coverage
+theme2.html
+theme3.html
+vidlink-debug.html
+RIVESTREAM_PARSING_NOTES.txt
 
 # next.js
 /.next/
