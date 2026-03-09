@@ -1,9 +1,18 @@
-const { app, BrowserWindow, protocol, net, session } = require('electron');
+const { app, BrowserWindow, protocol, net, session, ipcMain, shell } = require('electron');
 const path = require('path');
+const { DiscordSelfPresenceService } = require('./discordSelfPresence');
 const isDev = !app.isPackaged;
 
 let mainWindow;
 let isCreatingWindow = false;
+let discordSelfPresenceTestVariantIndex = 0;
+const discordSelfPresence = new DiscordSelfPresenceService({
+  onStatusChange: (status) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('discord-self-presence:status', status);
+    }
+  },
+});
 
 // Register custom protocol to handle HLS stream proxying
 app.whenReady().then(() => {
@@ -348,6 +357,7 @@ function createWindow() {
       
       // Clean up server process when app quits
       app.on('before-quit', () => {
+        discordSelfPresence.shutdown().catch(() => {});
         if (serverProcess && !serverProcess.killed) {
           serverProcess.kill();
         }
@@ -411,14 +421,12 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     // Open external URLs in the default browser
     if (url.startsWith('http://') || url.startsWith('https://')) {
-      const { shell } = require('electron');
       shell.openExternal(url);
     }
     return { action: 'deny' };
   });
 
   // Handle window controls
-  const { ipcMain, shell } = require('electron');
   ipcMain.on('window-minimize', () => {
     mainWindow.minimize();
   });
@@ -439,6 +447,175 @@ function createWindow() {
   ipcMain.on('open-external', (event, url) => {
     shell.openExternal(url);
   });
+
+  if (!global.__cinestreamDiscordPresenceHandlersRegistered) {
+    global.__cinestreamDiscordPresenceHandlersRegistered = true;
+
+    ipcMain.on('discord-self-presence:update', (_event, payload) => {
+      discordSelfPresence.updatePresence(payload).catch((error) => {
+        console.error('[discord-self] update failed:', error);
+      });
+    });
+
+    ipcMain.on('discord-self-presence:clear', () => {
+      discordSelfPresence.clearPresence().catch((error) => {
+        console.error('[discord-self] clear failed:', error);
+      });
+    });
+
+    ipcMain.handle('discord-self-presence:set-enabled', async (_event, enabled) => {
+      await discordSelfPresence.setEnabled(!!enabled);
+      return { ok: true };
+    });
+
+    ipcMain.handle('discord-self-presence:set-config', async (_event, config) => {
+      await discordSelfPresence.setConfig(config || {});
+      return { ok: true };
+    });
+
+    ipcMain.handle('discord-self-presence:save-token', async (_event, token) => {
+      return discordSelfPresence.saveToken(token);
+    });
+
+    ipcMain.handle('discord-self-presence:delete-token', async () => {
+      return discordSelfPresence.deleteToken();
+    });
+
+    ipcMain.handle('discord-self-presence:test', async () => {
+      const now = Date.now();
+      const durationSec = 43 * 60 + 8;
+      const currentTimeSec = 8;
+      const startTimestampMs = now - currentTimeSec * 1000;
+      const endTimestampMs = startTimestampMs + durationSec * 1000;
+      const testImageUrl =
+        process.env.CINESTREAM_DISCORD_TEST_IMAGE_URL ||
+        'https://pbs.twimg.com/media/HCCKSAIWkAA4FNv?format=jpg&name=medium';
+      const variants = [
+        {
+          label: 'watching-paused',
+          rawActivityType: 'watching',
+          playbackState: 'paused',
+          stateTextSmall: 'Paused',
+          episodeName: 'Variant 1: watching-paused',
+          includeButtons: false,
+          timestampMode: 'both',
+        },
+        {
+          label: 'watching-playing',
+          rawActivityType: 'watching',
+          playbackState: 'playing',
+          stateTextSmall: 'Playing',
+          episodeName: 'Variant 2: watching-playing',
+          includeButtons: false,
+          timestampMode: 'both',
+        },
+        {
+          label: 'watching-endonly',
+          rawActivityType: 'watching',
+          playbackState: 'playing',
+          stateTextSmall: 'Playing',
+          episodeName: 'Variant 3: watching-endonly',
+          includeButtons: false,
+          timestampMode: 'endOnly',
+        },
+        {
+          label: 'listening-endonly',
+          rawActivityType: 'listening',
+          playbackState: 'playing',
+          stateTextSmall: 'Playing',
+          episodeName: 'Variant 4: listening-endonly',
+          includeButtons: false,
+          timestampMode: 'endOnly',
+        },
+        {
+          label: 'playing-progress',
+          rawActivityType: 'playing',
+          playbackState: 'playing',
+          stateTextSmall: 'Playing',
+          episodeName: 'Variant 5: playing-progress',
+          includeButtons: false,
+          timestampMode: 'both',
+        },
+        {
+          label: 'playing-buttons',
+          rawActivityType: 'playing',
+          playbackState: 'playing',
+          stateTextSmall: 'Playing',
+          episodeName: 'Variant 6: playing-buttons',
+          includeButtons: true,
+          timestampMode: 'both',
+        },
+        {
+          label: 'url-image-direct',
+          rawActivityType: 'watching',
+          playbackState: 'playing',
+          stateTextSmall: 'Playing',
+          episodeName: 'Variant 7: url-image-direct',
+          includeButtons: false,
+          timestampMode: 'endOnly',
+          imageMode: 'direct',
+        },
+        {
+          label: 'url-image-mp',
+          rawActivityType: 'watching',
+          playbackState: 'playing',
+          stateTextSmall: 'Playing',
+          episodeName: 'Variant 8: url-image-mp',
+          includeButtons: false,
+          timestampMode: 'endOnly',
+          imageMode: 'mp',
+        },
+      ];
+      const variant = variants[discordSelfPresenceTestVariantIndex % variants.length];
+      discordSelfPresenceTestVariantIndex += 1;
+      const largeImageValue =
+        variant.imageMode === 'direct'
+          ? testImageUrl
+          : variant.imageMode === 'mp'
+            ? `mp:${testImageUrl}`
+            : (process.env.CINESTREAM_DISCORD_TEST_LARGE_IMAGE || undefined);
+      const useUrlImageMode = variant.imageMode === 'direct' || variant.imageMode === 'mp';
+
+      await discordSelfPresence.updatePresence({
+        mediaType: 'tv',
+        tmdbId: 0,
+        title: 'Youtube',
+        discordTitle: 'Youtube',
+        episodeName: variant.episodeName,
+        season: 4,
+        episode: 5,
+        playbackState: variant.playbackState,
+        currentTimeSec,
+        durationSec,
+        provider: 'flowcast',
+        quality: '720p',
+        startTimestampMs: variant.timestampMode === 'endOnly' ? undefined : startTimestampMs,
+        endTimestampMs,
+        buttons: variant.includeButtons ? [
+          { label: 'watch youtube', url: 'https://youtube.com' },
+          { label: 'watch youtube shorts', url: 'https://youtube.com/shorts' },
+        ] : undefined,
+        forceRawRich: true,
+        forceImmediate: true,
+        rawActivityType: variant.rawActivityType,
+        applicationId: useUrlImageMode ? undefined : (process.env.CINESTREAM_DISCORD_TEST_APP_ID || undefined),
+        largeImage: largeImageValue,
+        largeText: process.env.CINESTREAM_DISCORD_TEST_LARGE_TEXT || 'CineStream',
+        smallImage: useUrlImageMode ? undefined : (process.env.CINESTREAM_DISCORD_TEST_SMALL_IMAGE || undefined),
+        smallText: process.env.CINESTREAM_DISCORD_TEST_SMALL_TEXT || variant.stateTextSmall,
+        updatedAtMs: Date.now(),
+      });
+      return { ok: true, variant: variant.label };
+    });
+
+    ipcMain.handle('discord-self-presence:get-status', async () => {
+      return discordSelfPresence.getStatus();
+    });
+
+    ipcMain.handle('discord-self-presence:get-config', async () => {
+      return discordSelfPresence.getConfig();
+    });
+  }
 
   // Send maximized state changes
   mainWindow.on('maximize', () => {
@@ -474,6 +651,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  discordSelfPresence.shutdown().catch(() => {});
   if (process.platform !== 'darwin') {
     app.quit();
   }

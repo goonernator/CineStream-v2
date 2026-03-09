@@ -49,6 +49,32 @@ export default function TitleBar() {
         if (electron.onUnmaximized) {
           electron.onUnmaximized(() => setIsMaximized(false));
         }
+
+        // Sync Discord self presence settings to Electron on app startup.
+        try {
+          const discordEnabled = localStorage.getItem('cinestream_discord_self_presence_enabled') === 'true';
+          const showProvider = localStorage.getItem('cinestream_discord_self_presence_show_provider') === 'true';
+          if (electron.discordSelfPresenceSetConfig) {
+            electron.discordSelfPresenceSetConfig({
+              enabled: discordEnabled,
+              showProviderQuality: showProvider,
+            }).catch(() => {});
+          }
+
+          // One-time prompt (optional feature onboarding)
+          const promptSeen = localStorage.getItem('cinestream_discord_self_presence_prompt_seen');
+          if (!promptSeen) {
+            localStorage.setItem('cinestream_discord_self_presence_prompt_seen', 'true');
+            const wantsSetup = window.confirm(
+              'Enable Discord Watching Presence? This uses a local Python helper and requires your Discord user token. Open Settings to configure it now?'
+            );
+            if (wantsSetup) {
+              router.push('/settings');
+            }
+          }
+        } catch {
+          // Ignore localStorage/prompt issues
+        }
       }
 
       const urlParams = new URLSearchParams(window.location.search);
@@ -96,6 +122,33 @@ export default function TitleBar() {
   useEffect(() => {
     if (mounted) {
       setAuthState(auth.getAuthState());
+    }
+  }, [pathname, mounted]);
+
+  useEffect(() => {
+    if (!mounted || typeof window === 'undefined') return;
+    const electron = (window as any).electron;
+    if (!electron?.discordSelfPresenceUpdate) return;
+
+    // Let the watch page/player own presence while actively watching content.
+    if (pathname?.startsWith('/watch/')) {
+      return;
+    }
+
+    try {
+      electron.discordSelfPresenceUpdate({
+        mediaType: 'movie',
+        tmdbId: -1,
+        title: 'CineStream',
+        discordTitle: 'CineStream',
+        episodeName: 'Browsing catalogue',
+        playbackState: 'paused',
+        forceRawRich: true,
+        rawActivityType: 'watching',
+        updatedAtMs: Date.now(),
+      });
+    } catch {
+      // Ignore desktop presence update failures
     }
   }, [pathname, mounted]);
 

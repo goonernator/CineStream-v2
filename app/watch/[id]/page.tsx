@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import StreamPlayer from '@/components/StreamPlayer';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -29,11 +29,15 @@ export default function WatchPage() {
   const [error, setError] = useState<string | null>(null);
   const [showStillWatching, setShowStillWatching] = useState(false);
   const [isPausedForStillWatching, setIsPausedForStillWatching] = useState(false);
+  const [currentEpisodeName, setCurrentEpisodeName] = useState<string>('');
 
   const id = parseInt(params.id as string);
   const type = searchParams.get('type') as 'movie' | 'tv' | null;
   const season = searchParams.get('season') ? parseInt(searchParams.get('season')!) : 1;
   const episode = searchParams.get('episode') ? parseInt(searchParams.get('episode')!) : 1;
+
+  // Ref to track which watch request is current (avoids applying stale load when user navigates quickly)
+  const requestedRef = useRef<{ id: number; type: string | null; season: number; episode: number }>({ id: 0, type: null, season: 1, episode: 1 });
 
   // All hooks must be called before any conditional returns
   // Use useCallback with stable reference to prevent VideoPlayer remounting
@@ -79,7 +83,16 @@ export default function WatchPage() {
   useEffect(() => {
     // Use a flag to prevent state updates after unmount (handles StrictMode double-invocation)
     let isCancelled = false;
-    
+    // Mark this effect's request as the current one (so we only apply state if still the active request)
+    requestedRef.current = { id, type, season, episode };
+
+    const isStillCurrentRequest = (loadedId: number, loadedType: 'movie' | 'tv', loadedSeason: number, loadedEpisode: number) => {
+      const cur = requestedRef.current;
+      if (cur.id !== loadedId || cur.type !== loadedType) return false;
+      if (loadedType === 'tv') return cur.season === loadedSeason && cur.episode === loadedEpisode;
+      return true;
+    };
+
     const loadMedia = async () => {
       if (!type || !id) {
         router.push('/');
@@ -124,12 +137,12 @@ export default function WatchPage() {
         
         if (type === 'movie') {
           const movie = await tmdb.getMovieDetails(id);
-          if (isCancelled) return;
+          if (isCancelled || !isStillCurrentRequest(id, 'movie', 1, 1)) return;
           setMediaItem(movie);
-          
+
           const result = await streaming.getMovieStreamSourcesAsync(id);
-          if (isCancelled) return;
-          
+          if (isCancelled || !isStillCurrentRequest(id, 'movie', 1, 1)) return;
+
           logger.debug('Movie sources:', result.sources, 'Captions:', result.captions);
           clearTimeout(loadingTimeout);
           if (result.sources.length === 0) {
@@ -138,14 +151,15 @@ export default function WatchPage() {
           setStreamSources(result.sources);
           setCaptions(result.captions);
           setHasNextEpisode(false);
+          setCurrentEpisodeName('');
         } else {
           const tv = await tmdb.getTVDetails(id);
-          if (isCancelled) return;
+          if (isCancelled || !isStillCurrentRequest(id, 'tv', season, episode)) return;
           setMediaItem(tv);
-          
+
           const result = await streaming.getTVStreamSourcesAsync(id, season, episode);
-          if (isCancelled) return;
-          
+          if (isCancelled || !isStillCurrentRequest(id, 'tv', season, episode)) return;
+
           logger.debug('TV sources:', result.sources, 'Captions:', result.captions);
           clearTimeout(loadingTimeout);
           // Persist availability status for details-page episode badges.
@@ -155,19 +169,21 @@ export default function WatchPage() {
           }
           setStreamSources(result.sources);
           setCaptions(result.captions);
-          
+
           // Check if there's a next episode
           const seasonDetails = await tmdb.getSeasonDetails(id, season);
-          if (isCancelled) return;
-          
+          if (isCancelled || !isStillCurrentRequest(id, 'tv', season, episode)) return;
+          const currentEpisode = seasonDetails.episodes?.find((ep: any) => ep?.episode_number === episode);
+          setCurrentEpisodeName(typeof currentEpisode?.name === 'string' ? currentEpisode.name : '');
+
           const hasMoreEpisodesInSeason = seasonDetails.episodes && episode < seasonDetails.episodes.length;
           const hasNextSeason = season < (tv.number_of_seasons || 0);
           setHasNextEpisode(hasMoreEpisodesInSeason || hasNextSeason);
-          
+
           // Check for "Still Watching" modal (TV shows only)
           const episodeId = `s${season}e${episode}`;
           const consecutiveCount = watchProgress.incrementConsecutiveEpisodeCount(id, episodeId);
-          
+
           // If this is the 5th consecutive episode (after watching 4), show modal
           if (consecutiveCount === 4) { // Show at start of 5th episode
             setShowStillWatching(true);
@@ -192,9 +208,13 @@ export default function WatchPage() {
       } catch (error) {
         clearTimeout(loadingTimeout);
         if (isCancelled) return;
+        const stillCurrent = type === 'movie'
+          ? isStillCurrentRequest(id, 'movie', 1, 1)
+          : isStillCurrentRequest(id, 'tv', season, episode);
+        if (!stillCurrent) return;
         logger.error('Failed to load media:', error);
-        const errorMessage = error instanceof Error 
-          ? (error.message.includes('fetch') || error.message.includes('network') 
+        const errorMessage = error instanceof Error
+          ? (error.message.includes('fetch') || error.message.includes('network')
               ? 'Network error: Unable to connect to the server. Please check your internet connection and try again.'
               : `Unable to load this content: ${error.message}. Please try again later.`)
           : 'Unable to load this content. Please try again later or contact support if the problem persists.';
@@ -203,7 +223,10 @@ export default function WatchPage() {
       } finally {
         clearTimeout(loadingTimeout);
         if (!isCancelled) {
-          setLoading(false);
+          const stillCurrent = type === 'movie'
+            ? isStillCurrentRequest(id, 'movie', 1, 1)
+            : isStillCurrentRequest(id, 'tv', season, episode);
+          if (stillCurrent) setLoading(false);
         }
       }
     };
@@ -213,6 +236,13 @@ export default function WatchPage() {
     // Cleanup: cancel any pending state updates when effect re-runs or component unmounts
     return () => {
       isCancelled = true;
+      if (typeof window !== 'undefined' && (window as any).electron?.discordSelfPresenceClear) {
+        try {
+          (window as any).electron.discordSelfPresenceClear();
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
     };
   }, [id, type, season, episode, router]);
 
@@ -296,6 +326,8 @@ export default function WatchPage() {
             captions={captions}
             type={type || 'movie'} 
             title={type === 'tv' ? `${title} - S${season}E${episode}` : title}
+            discordTitle={title}
+            discordEpisodeName={type === 'tv' ? currentEpisodeName : undefined}
             mediaId={id}
             season={type === 'tv' ? season : undefined}
             episode={type === 'tv' ? episode : undefined}

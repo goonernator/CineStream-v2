@@ -10,6 +10,8 @@ interface StreamPlayerProps {
   captions?: StreamCaption[];
   type?: 'movie' | 'tv';
   title?: string;
+  discordTitle?: string;
+  discordEpisodeName?: string;
   mediaId?: number;
   season?: number;
   episode?: number;
@@ -19,7 +21,7 @@ interface StreamPlayerProps {
   pausedForStillWatching?: boolean;
 }
 
-function StreamPlayer({ sources, captions = [], type = 'movie', title, mediaId, season, episode, hasNextEpisode, onNextEpisode, onControlsVisibilityChange, pausedForStillWatching = false }: StreamPlayerProps) {
+function StreamPlayer({ sources, captions = [], type = 'movie', title, discordTitle, discordEpisodeName, mediaId, season, episode, hasNextEpisode, onNextEpisode, onControlsVisibilityChange, pausedForStillWatching = false }: StreamPlayerProps) {
   const [currentSourceIndex, setCurrentSourceIndex] = useState(0);
   const [hasError, setHasError] = useState(false);
   const [providerHealth, setProviderHealth] = useState<Record<string, 'checking' | 'ok' | 'failed'>>({});
@@ -93,9 +95,9 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, mediaId, 
     }
 
     const next: Record<string, 'checking' | 'ok' | 'failed'> = {};
-    for (const [provider, providerSources] of grouped.entries()) {
+    grouped.forEach((providerSources, provider) => {
       next[provider] = providerSources.length > 0 ? 'ok' : 'failed';
-    }
+    });
     setProviderHealth(next);
   }, [sources]);
 
@@ -252,6 +254,8 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, mediaId, 
         src={currentSource.url} 
         type={type}
         title={title}
+        discordTitle={discordTitle}
+        discordEpisodeName={discordEpisodeName}
         mediaId={mediaId}
         season={season}
         episode={episode}

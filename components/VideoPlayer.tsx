@@ -12,6 +12,8 @@ interface VideoPlayerProps {
   src: string;
   type?: 'movie' | 'tv';
   title?: string;
+  discordTitle?: string;
+  discordEpisodeName?: string;
   mediaId?: number;
   season?: number;
   episode?: number;
@@ -29,6 +31,7 @@ interface VideoPlayerProps {
 
 // Subtitle preference key for localStorage
 const SUBTITLE_PREFERENCE_KEY = 'cinestream_subtitle_language';
+const AUDIO_BOOST_PREFERENCE_KEY = 'cinestream_audio_boost';
 
 // Read autoplay settings from localStorage
 const getAutoplaySettings = () => {
@@ -47,6 +50,8 @@ export default function VideoPlayer({
   src, 
   type = 'movie', 
   title,
+  discordTitle,
+  discordEpisodeName,
   mediaId,
   season,
   episode,
@@ -65,12 +70,16 @@ export default function VideoPlayer({
   const isNoirFlix = layout === 'noirflix';
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const audioGainNodeRef = useRef<GainNode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+  const [audioBoost, setAudioBoost] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [buffering, setBuffering] = useState(false);
@@ -107,6 +116,59 @@ export default function VideoPlayer({
   useEffect(() => {
     pausedForStillWatchingRef.current = pausedForStillWatching;
   }, [pausedForStillWatching]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = Number(localStorage.getItem(AUDIO_BOOST_PREFERENCE_KEY) || '1');
+    if (saved === 1 || saved === 1.5 || saved === 2) {
+      setAudioBoost(saved);
+    }
+  }, []);
+
+  const ensureAudioBoostGraph = async () => {
+    const video = videoRef.current;
+    if (!video || typeof window === 'undefined') return;
+
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioCtx();
+      }
+
+      const ctx = audioContextRef.current;
+      if (!ctx) return;
+
+      if (!audioSourceNodeRef.current) {
+        audioSourceNodeRef.current = ctx.createMediaElementSource(video);
+      }
+
+      if (!audioGainNodeRef.current) {
+        audioGainNodeRef.current = ctx.createGain();
+        audioSourceNodeRef.current.connect(audioGainNodeRef.current);
+        audioGainNodeRef.current.connect(ctx.destination);
+      }
+
+      audioGainNodeRef.current.gain.value = audioBoost;
+
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+    } catch (error) {
+      logger.debug('Audio boost unavailable:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (audioGainNodeRef.current) {
+      audioGainNodeRef.current.gain.value = audioBoost;
+    }
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(AUDIO_BOOST_PREFERENCE_KEY, String(audioBoost));
+    }
+  }, [audioBoost]);
   
   // Parse VTT file content into cues
   const parseVTT = (vttText: string): Array<{ start: number; end: number; text: string }> => {
@@ -705,6 +767,59 @@ export default function VideoPlayer({
   const currentQualityLabel = currentSourceLabel?.quality || 'Auto';
   const showStartupOverlay = isSourceStarting || (buffering && currentTime < 2);
 
+  const pushDiscordSelfPresence = (playbackStateOverride?: 'playing' | 'paused' | 'buffering') => {
+    if (typeof window === 'undefined' || !(window as any).electron?.discordSelfPresenceUpdate) return;
+    if (!mediaId || !title) return;
+
+    const state = playbackStateOverride || (buffering ? 'buffering' : isPlaying ? 'playing' : 'paused');
+    const hasTiming =
+      state === 'playing' &&
+      Number.isFinite(currentTime) &&
+      Number.isFinite(duration) &&
+      duration > 0;
+    const now = Date.now();
+    const safeCurrentTime = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
+    const safeDuration = Number.isFinite(duration) ? Math.max(0, duration) : 0;
+    const startTimestampMs = hasTiming ? now - Math.floor(safeCurrentTime * 1000) : undefined;
+    const endTimestampMs = hasTiming ? startTimestampMs! + Math.floor(safeDuration * 1000) : undefined;
+    const sanctionUrl = 'https://sanction.tv';
+
+    (window as any).electron.discordSelfPresenceUpdate({
+      mediaType: type,
+      tmdbId: mediaId,
+      title,
+      discordTitle,
+      episodeName: discordEpisodeName,
+      season: type === 'tv' ? season : undefined,
+      episode: type === 'tv' ? episode : undefined,
+      playbackState: state,
+      currentTimeSec: Number.isFinite(currentTime) ? currentTime : undefined,
+      durationSec: Number.isFinite(duration) ? duration : undefined,
+      startTimestampMs,
+      endTimestampMs,
+      provider: currentSourceLabel?.provider,
+      quality: currentQualityLabel,
+      forceRawRich: true,
+      rawActivityType: 'watching',
+      buttons: [{ label: 'Open Sanction', url: sanctionUrl }],
+      updatedAtMs: now,
+    });
+  };
+
+  useEffect(() => {
+    pushDiscordSelfPresence();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, buffering, currentSourceIndex, title, discordTitle, discordEpisodeName, mediaId, type, season, episode]);
+
+  useEffect(() => {
+    if (!isPlaying || buffering) return;
+    const interval = setInterval(() => {
+      pushDiscordSelfPresence('playing');
+    }, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, buffering, currentSourceIndex, title, discordTitle, discordEpisodeName, mediaId, type, season, episode]);
+
   // Handle pausedForStillWatching separately to avoid recreating video element
   useEffect(() => {
     if (!videoRef.current) return;
@@ -783,6 +898,7 @@ export default function VideoPlayer({
 
   const togglePlay = () => {
     if (videoRef.current) {
+      void ensureAudioBoostGraph();
       if (isPlaying) {
         videoRef.current.pause();
       } else {
@@ -805,8 +921,14 @@ export default function VideoPlayer({
 
   const toggleMute = () => {
     if (videoRef.current) {
+      void ensureAudioBoostGraph();
       videoRef.current.muted = !isMuted;
     }
+  };
+
+  const cycleAudioBoost = () => {
+    void ensureAudioBoostGraph();
+    setAudioBoost((prev) => (prev === 1 ? 1.5 : prev === 1.5 ? 2 : 1));
   };
 
   const toggleFullscreen = () => {
@@ -1183,6 +1305,21 @@ export default function VideoPlayer({
                       isNoirFlix ? 'bg-[#1a1a1a]' : 'bg-gray-600'
                     }`}
                 />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    cycleAudioBoost();
+                  }}
+                  className={`px-2 py-0.5 rounded text-xs font-semibold border transition-all duration-200 ${
+                    isNoirFlix
+                      ? 'border-white/20 text-white/90 hover:bg-white hover:text-black'
+                      : 'border-white/20 text-white/90 hover:bg-white/10'
+                  }`}
+                  title={`Audio boost ${audioBoost}x`}
+                  aria-label={`Audio boost ${audioBoost}x`}
+                >
+                  {audioBoost}x
+                </button>
               </div>
 
               {/* Time */}

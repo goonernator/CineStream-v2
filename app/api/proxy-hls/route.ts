@@ -13,10 +13,16 @@ async function fetchWithNodeRequest(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await undiciFetch(targetUrl, {
+    const res = await undiciFetch(targetUrl, {
       headers,
       redirect: 'follow',
       signal: controller.signal,
+    });
+    const body = await res.arrayBuffer();
+    return new Response(body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers: new Headers(res.headers as any),
     });
   } finally {
     clearTimeout(timeoutId);

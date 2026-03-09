@@ -142,6 +142,12 @@ export default function SettingsPage() {
   const [defaultSubtitleLang, setDefaultSubtitleLang] = useState('en');
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
   const [adultContentEnabled, setAdultContentEnabled] = useState(false);
+  const [discordSelfPresenceEnabled, setDiscordSelfPresenceEnabled] = useState(false);
+  const [discordShowProviderQuality, setDiscordShowProviderQuality] = useState(false);
+  const [discordTokenInput, setDiscordTokenInput] = useState('');
+  const [discordTokenPresent, setDiscordTokenPresent] = useState(false);
+  const [discordStatus, setDiscordStatus] = useState<{ state: string; message?: string } | null>(null);
+  const [discordStatusLoading, setDiscordStatusLoading] = useState(false);
 
   // Load settings from localStorage
   useEffect(() => {
@@ -152,6 +158,8 @@ export default function SettingsPage() {
       const savedSubLang = localStorage.getItem('cinestream_subtitle_language');
       const savedSubEnabled = localStorage.getItem('cinestream_subtitles_enabled');
       const savedAdultContent = localStorage.getItem('cinestream_adult_content_enabled');
+      const savedDiscordEnabled = localStorage.getItem('cinestream_discord_self_presence_enabled');
+      const savedDiscordProvider = localStorage.getItem('cinestream_discord_self_presence_show_provider');
 
       if (savedAutoplay !== null) setAutoplay(savedAutoplay === 'true');
       if (savedAutoNext !== null) setAutoNextEpisode(savedAutoNext === 'true');
@@ -159,7 +167,52 @@ export default function SettingsPage() {
       if (savedSubLang) setDefaultSubtitleLang(savedSubLang);
       if (savedSubEnabled !== null) setSubtitlesEnabled(savedSubEnabled === 'true');
       if (savedAdultContent !== null) setAdultContentEnabled(savedAdultContent === 'true');
+      if (savedDiscordEnabled !== null) setDiscordSelfPresenceEnabled(savedDiscordEnabled === 'true');
+      if (savedDiscordProvider !== null) setDiscordShowProviderQuality(savedDiscordProvider === 'true');
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !(window as any).electron?.discordSelfPresenceGetConfig) return;
+
+    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
+
+    const syncDiscordState = async () => {
+      try {
+        setDiscordStatusLoading(true);
+        const [config, status] = await Promise.all([
+          (window as any).electron.discordSelfPresenceGetConfig(),
+          (window as any).electron.discordSelfPresenceGetStatus(),
+        ]);
+        if (cancelled) return;
+        if (config) {
+          setDiscordTokenPresent(!!config.tokenPresent);
+        }
+        if (status) {
+          setDiscordStatus(status);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDiscordStatus({ state: 'helper_error', message: error instanceof Error ? error.message : 'Failed to read status' });
+        }
+      } finally {
+        if (!cancelled) setDiscordStatusLoading(false);
+      }
+    };
+
+    syncDiscordState();
+
+    if ((window as any).electron.onDiscordSelfPresenceStatus) {
+      unsubscribe = (window as any).electron.onDiscordSelfPresenceStatus((status: any) => {
+        if (!cancelled) setDiscordStatus(status);
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   // Save settings to localStorage
@@ -206,6 +259,113 @@ export default function SettingsPage() {
     // Trigger custom event so other components can react
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('cinestream:adult-content-changed', { detail: { enabled: value } }));
+    }
+  };
+
+  const syncDiscordConfigToElectron = async (enabled: boolean, showProviderQuality: boolean) => {
+    if (typeof window === 'undefined' || !(window as any).electron?.discordSelfPresenceSetConfig) return;
+    try {
+      await (window as any).electron.discordSelfPresenceSetConfig({
+        enabled,
+        showProviderQuality,
+      });
+      const status = await (window as any).electron.discordSelfPresenceGetStatus?.();
+      if (status) setDiscordStatus(status);
+      const config = await (window as any).electron.discordSelfPresenceGetConfig?.();
+      if (config) setDiscordTokenPresent(!!config.tokenPresent);
+    } catch (error) {
+      setDiscordStatus({ state: 'helper_error', message: error instanceof Error ? error.message : 'Failed to sync Discord settings' });
+    }
+  };
+
+  const handleDiscordSelfPresenceEnabledChange = async (value: boolean) => {
+    setDiscordSelfPresenceEnabled(value);
+    saveSetting('discord_self_presence_enabled', value);
+    await syncDiscordConfigToElectron(value, discordShowProviderQuality);
+    toast.success(value ? 'Discord self presence enabled' : 'Discord self presence disabled');
+  };
+
+  const handleDiscordShowProviderQualityChange = async (value: boolean) => {
+    setDiscordShowProviderQuality(value);
+    saveSetting('discord_self_presence_show_provider', value);
+    await syncDiscordConfigToElectron(discordSelfPresenceEnabled, value);
+    toast.success('Discord presence detail setting saved');
+  };
+
+  const handleSaveDiscordToken = async () => {
+    const token = discordTokenInput.trim();
+    if (!token) {
+      toast.error('Enter a Discord token first');
+      return;
+    }
+    if (typeof window === 'undefined' || !(window as any).electron?.discordSelfPresenceSaveToken) {
+      toast.error('Discord self presence is only available in the desktop app');
+      return;
+    }
+    setDiscordStatusLoading(true);
+    try {
+      const result = await (window as any).electron.discordSelfPresenceSaveToken(token);
+      if (!result?.ok) {
+        throw new Error(result?.error || 'Failed to save token');
+      }
+      setDiscordTokenInput('');
+      setDiscordTokenPresent(true);
+      await syncDiscordConfigToElectron(discordSelfPresenceEnabled, discordShowProviderQuality);
+      toast.success('Discord token saved securely to OS keychain');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save token');
+    } finally {
+      setDiscordStatusLoading(false);
+    }
+  };
+
+  const handleRemoveDiscordToken = async () => {
+    if (typeof window === 'undefined' || !(window as any).electron?.discordSelfPresenceDeleteToken) {
+      toast.error('Discord self presence is only available in the desktop app');
+      return;
+    }
+    setDiscordStatusLoading(true);
+    try {
+      const result = await (window as any).electron.discordSelfPresenceDeleteToken();
+      if (!result?.ok) {
+        throw new Error(result?.error || 'Failed to remove token');
+      }
+      setDiscordTokenPresent(false);
+      setDiscordTokenInput('');
+      const status = await (window as any).electron.discordSelfPresenceGetStatus?.();
+      if (status) setDiscordStatus(status);
+      toast.success('Discord token removed');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to remove token');
+    } finally {
+      setDiscordStatusLoading(false);
+    }
+  };
+
+  const handleDiscordTestPresence = async () => {
+    if (typeof window === 'undefined' || !(window as any).electron?.discordSelfPresenceTest) {
+      toast.error('Desktop app only');
+      return;
+    }
+    try {
+      const result = await (window as any).electron.discordSelfPresenceTest();
+      const variant = result?.variant ? ` (${result.variant})` : '';
+      toast.success(`Sent test presence${variant}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to send test presence');
+    }
+  };
+
+  const handleDiscordClearPresence = async () => {
+    if (typeof window === 'undefined' || !(window as any).electron?.discordSelfPresenceClear) {
+      toast.error('Desktop app only');
+      return;
+    }
+    try {
+      (window as any).electron.discordSelfPresenceClear();
+      toast.success('Sent clear presence');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to clear presence');
     }
   };
 
@@ -318,6 +478,79 @@ export default function SettingsPage() {
               ]}
               onChange={handleQualityChange}
             />
+          </SettingSection>
+
+          <SettingSection title="Discord Watching Presence" description="Publish a user-account 'Watching' status using a local discord.py-self helper (dev use only)">
+            <ToggleSwitch
+              label="Enable Discord self presence"
+              description="Starts a local Python helper and updates your Discord Watching presence while using the desktop app"
+              checked={discordSelfPresenceEnabled}
+              onChange={handleDiscordSelfPresenceEnabledChange}
+            />
+            <ToggleSwitch
+              label="Include provider / quality"
+              description="Append stream provider and selected quality to the presence text"
+              checked={discordShowProviderQuality}
+              onChange={handleDiscordShowProviderQualityChange}
+            />
+
+            <div className="space-y-2 py-2">
+              <label className="block text-netflix-light font-medium">Discord User Token (stored in OS keychain)</label>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="password"
+                  value={discordTokenInput}
+                  onChange={(e) => setDiscordTokenInput(e.target.value)}
+                  placeholder={discordTokenPresent ? 'Token saved (enter to replace)' : 'Paste your Discord token'}
+                  className="flex-1 bg-netflix-dark border border-netflix-gray/30 rounded-lg px-4 py-2 text-netflix-light focus:border-netflix-red focus:outline-none focus:ring-1 focus:ring-netflix-red/50"
+                />
+                <button
+                  onClick={handleSaveDiscordToken}
+                  disabled={discordStatusLoading}
+                  className="px-4 py-2 bg-netflix-red hover:bg-red-600 disabled:opacity-60 text-white rounded-lg transition-colors"
+                >
+                  Save Token
+                </button>
+                <button
+                  onClick={handleRemoveDiscordToken}
+                  disabled={discordStatusLoading || !discordTokenPresent}
+                  className="px-4 py-2 bg-netflix-dark border border-netflix-gray/30 hover:border-red-500/50 hover:bg-red-500/10 disabled:opacity-60 text-netflix-light rounded-lg transition-colors"
+                >
+                  Remove Token
+                </button>
+              </div>
+              <p className="text-xs text-netflix-gray">
+                Token is never stored in localStorage. It is sent to Electron and saved in the OS keychain (via keytar).
+              </p>
+            </div>
+
+            <div className="py-2">
+              <div className="text-netflix-light font-medium mb-1">Helper Status</div>
+              <div className="text-sm text-netflix-gray">
+                {discordStatusLoading && !discordStatus
+                  ? 'Loading...'
+                  : discordStatus
+                    ? `${discordStatus.state}${discordStatus.message ? ` - ${discordStatus.message}` : ''}`
+                    : 'Desktop app only (status unavailable in browser mode)'}
+              </div>
+              <div className="text-xs text-netflix-gray mt-2">
+                Requires Python and `discord.py-self` installed locally. See `electron/python/requirements-discord-self.txt`.
+              </div>
+              <div className="flex flex-wrap gap-3 mt-3">
+                <button
+                  onClick={handleDiscordTestPresence}
+                  className="px-4 py-2 bg-netflix-red hover:bg-red-600 text-white rounded-lg transition-colors"
+                >
+                  Test Presence
+                </button>
+                <button
+                  onClick={handleDiscordClearPresence}
+                  className="px-4 py-2 bg-netflix-dark border border-netflix-gray/30 hover:border-netflix-red/50 hover:bg-netflix-red/10 text-netflix-light rounded-lg transition-colors"
+                >
+                  Clear Presence
+                </button>
+              </div>
+            </div>
           </SettingSection>
 
           {/* Subtitles Section */}

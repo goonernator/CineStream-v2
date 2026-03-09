@@ -249,17 +249,20 @@ export default function NoirFlixHome() {
   }, []);
 
   const handleContinueWatchingClick = (item: Movie | TVShow) => {
-    const progress = watchProgress.getProgress(
-      item.id,
-      'title' in item ? 'movie' : 'tv',
-      'title' in item ? undefined : 1,
-      'title' in item ? undefined : 1
-    );
-    
-    if (progress && 'title' in item === false) {
-      router.push(`/watch/${item.id}?type=tv&season=${progress.season || 1}&episode=${progress.episode || 1}`);
+    const isMovie = 'title' in item;
+    if (isMovie) {
+      router.push(`/watch/${item.id}?type=movie`);
+      return;
+    }
+    // For TV: use the most recent progress for this show (any season/episode), not just S1E1
+    const allProgress = watchProgress.getAllProgress();
+    const tvProgress = allProgress
+      .filter(p => p.id === item.id && p.type === 'tv' && p.season != null && p.episode != null)
+      .sort((a, b) => (b.lastWatched ?? 0) - (a.lastWatched ?? 0))[0];
+    if (tvProgress?.season != null && tvProgress?.episode != null) {
+      router.push(`/watch/${item.id}?type=tv&season=${tvProgress.season}&episode=${tvProgress.episode}`);
     } else {
-      router.push(`/watch/${item.id}?type=${'title' in item ? 'movie' : 'tv'}`);
+      router.push(`/watch/${item.id}?type=tv`);
     }
   };
 

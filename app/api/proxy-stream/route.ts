@@ -18,8 +18,6 @@ export async function GET(request: NextRequest) {
 
   try {
     // Use tlo.sh v3 API from environment variable (not exposed on GitHub)
-    // Movies: https://tlo.sh/v3/api/streams/movie/TMDB_ID
-    // TV: https://tlo.sh/v3/api/streams/tv/TMDB_ID/SEASON/EPISODE
     const TLO_V3_BASE_URL = process.env.TLO_V3_BASE_URL;
     
     if (!TLO_V3_BASE_URL) {
