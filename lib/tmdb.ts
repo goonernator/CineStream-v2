@@ -1,11 +1,11 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { logger } from './logger';
 import { retryWithBackoff } from './retry';
+import { appSettings } from './appSettings';
 import type { Movie, TVShow, TMDBResponse, Video, AccountDetails, SessionData, RequestToken, Genre, DiscoverFilters, PaginatedResponse, CastMember, PersonCredit, Episode, Person } from './types';
 
-const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY || '111909b8747aeff1169944069465906c';
-const TMDB_BASE_URL = process.env.NEXT_PUBLIC_TMDB_BASE_URL || 'https://api.themoviedb.org/3';
-export const TMDB_IMAGE_BASE = process.env.NEXT_PUBLIC_TMDB_IMAGE_BASE || 'https://image.tmdb.org/t/p';
+const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
 // Simple in-memory cache
 const cache = new Map<string, { data: any; timestamp: number }>();
@@ -49,6 +49,7 @@ function setCache(key: string, data: any) {
 
 // Rate-limited API wrapper with retry
 async function rateLimitedGet<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+  applyTmdbConfig();
   const cacheKey = getCacheKey(url, config?.params);
   const cached = getFromCache<T>(cacheKey);
   if (cached) return cached;
@@ -92,6 +93,7 @@ async function rateLimitedGet<T>(url: string, config?: AxiosRequestConfig): Prom
 }
 
 async function rateLimitedPost<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+  applyTmdbConfig();
   return new Promise((resolve, reject) => {
     requestQueue.push(async () => {
       try {
@@ -139,10 +141,23 @@ async function rateLimitedPost<T>(url: string, data?: unknown, config?: AxiosReq
 
 const api = axios.create({
   baseURL: TMDB_BASE_URL,
-  params: {
-    api_key: TMDB_API_KEY,
-  },
+  timeout: 30000,
 });
+
+// Ensure requests always go to TMDB with API key (avoid relative URLs; always send key)
+api.interceptors.request.use((config) => {
+  const apiKey = appSettings.getTmdbApiKey();
+  config.params = { ...config.params, api_key: apiKey };
+  if (config.url && !config.url.startsWith('http')) {
+    config.url = (config.baseURL || TMDB_BASE_URL) + (config.url.startsWith('/') ? config.url : '/' + config.url);
+    config.baseURL = undefined;
+  }
+  return config;
+});
+
+function applyTmdbConfig(): void {
+  api.defaults.params = { api_key: appSettings.getTmdbApiKey() };
+}
 
 // Cache for favorites/watchlist to prevent repeated calls
 let favoritesCache: { data: any; timestamp: number; key: string } | null = null;
@@ -210,6 +225,47 @@ export const tmdb = {
     return response.data;
   },
 
+  // Movie release dates (for content rating/certification and descriptors)
+  async getMovieReleaseDates(id: number): Promise<{ certification: string; reason: string } | null> {
+    try {
+      const res = await rateLimitedGet<{
+        id: number;
+        results?: Array<{
+          iso_3166_1: string;
+          release_dates?: Array<{
+            certification?: string;
+            descriptors?: string[];
+          }>;
+        }>;
+      }>(`/movie/${id}/release_dates`);
+      const results = res?.results ?? [];
+      const us = results.find((r) => r.iso_3166_1 === 'US') ?? results[0];
+      const release = us?.release_dates?.find((rd) => rd.certification) ?? us?.release_dates?.[0];
+      if (!release?.certification) return null;
+      const reason = release.descriptors?.[0] ?? '';
+      return { certification: release.certification.trim(), reason: reason.trim() };
+    } catch {
+      return null;
+    }
+  },
+
+  // TV content ratings (for age rating)
+  async getTVContentRatings(id: number): Promise<{ certification: string; reason: string } | null> {
+    try {
+      const res = await rateLimitedGet<{
+        id: number;
+        results?: Array<{ iso_3166_1: string; rating: string }>;
+      }>(`/tv/${id}/content_ratings`);
+      const results = res?.results ?? [];
+      const us = results.find((r) => r.iso_3166_1 === 'US') ?? results[0];
+      const rating = us?.rating?.trim();
+      if (!rating) return null;
+      return { certification: rating, reason: '' };
+    } catch {
+      return null;
+    }
+  },
+
   // Get trailers/videos for a movie
   async getMovieTrailers(id: number): Promise<Video[]> {
     const response = await api.get<{ results: Video[] }>(`/movie/${id}/videos`);
@@ -261,7 +317,7 @@ export const tmdb = {
     watchlistCache = null;
     // Dispatch event to notify pages
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('cinestream:watchlist-updated'));
+      window.dispatchEvent(new CustomEvent('sanctiontv:watchlist-updated'));
     }
   },
 
@@ -278,7 +334,7 @@ export const tmdb = {
     favoritesCache = null;
     // Dispatch event to notify pages
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('cinestream:favorites-updated'));
+      window.dispatchEvent(new CustomEvent('sanctiontv:favorites-updated'));
     }
   },
 

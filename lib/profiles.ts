@@ -84,7 +84,7 @@ export const profiles = {
       localStorage.removeItem(ACTIVE_PROFILE_KEY);
     }
     // Dispatch event for other components to react
-    window.dispatchEvent(new CustomEvent('cinestream:profile-changed', { detail: { profileId } }));
+    window.dispatchEvent(new CustomEvent('sanctiontv:profile-changed', { detail: { profileId } }));
   },
 
   // Get active profile

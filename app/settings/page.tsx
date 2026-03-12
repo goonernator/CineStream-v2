@@ -7,6 +7,7 @@ import { layouts } from '@/lib/layout';
 import { useToast } from '@/lib/toast';
 import { Theme, themes } from '@/lib/theme';
 import { watchProgress } from '@/lib/watchProgress';
+import { appSettings } from '@/lib/appSettings';
 
 // Setting Section Component
 interface SettingSectionProps {
@@ -149,6 +150,9 @@ export default function SettingsPage() {
   const [discordStatus, setDiscordStatus] = useState<{ state: string; message?: string } | null>(null);
   const [discordStatusLoading, setDiscordStatusLoading] = useState(false);
 
+  const [tmdbApiKey, setTmdbApiKey] = useState('');
+  const [tloV3BaseUrl, setTloV3BaseUrl] = useState('');
+
   // Load settings from localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -169,6 +173,8 @@ export default function SettingsPage() {
       if (savedAdultContent !== null) setAdultContentEnabled(savedAdultContent === 'true');
       if (savedDiscordEnabled !== null) setDiscordSelfPresenceEnabled(savedDiscordEnabled === 'true');
       if (savedDiscordProvider !== null) setDiscordShowProviderQuality(savedDiscordProvider === 'true');
+      setTmdbApiKey(appSettings.getTmdbApiKey());
+      setTloV3BaseUrl(appSettings.getTloV3BaseUrl());
     }
   }, []);
 
@@ -258,7 +264,7 @@ export default function SettingsPage() {
     toast.success(value ? 'Adult content enabled' : 'Adult content disabled');
     // Trigger custom event so other components can react
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('cinestream:adult-content-changed', { detail: { enabled: value } }));
+      window.dispatchEvent(new CustomEvent('sanctiontv:adult-content-changed', { detail: { enabled: value } }));
     }
   };
 
@@ -401,7 +407,7 @@ export default function SettingsPage() {
             </svg>
             Settings
           </h1>
-          <p className="text-netflix-gray">Customize your CineStream experience</p>
+          <p className="text-netflix-gray">Customize your SanctionTV experience</p>
         </div>
 
         <div className="space-y-6">
@@ -452,6 +458,34 @@ export default function SettingsPage() {
           </SettingSection>
 
           {/* Playback Section */}
+          <SettingSection title="API & Services" description="Configure API keys and base URLs. No .env file required.">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-netflix-light font-medium mb-1">TMDB API Key</label>
+                <input
+                  type="password"
+                  value={tmdbApiKey}
+                  onChange={(e) => setTmdbApiKey(e.target.value)}
+                  onBlur={() => { appSettings.setTmdbApiKey(tmdbApiKey); toast.success('TMDB API key saved'); }}
+                  placeholder="Your TMDB API key (required for metadata)"
+                  className="w-full bg-netflix-dark border border-netflix-gray/30 rounded-lg px-4 py-2 text-netflix-light placeholder-netflix-gray/60 focus:border-netflix-red focus:outline-none focus:ring-1 focus:ring-netflix-red/50"
+                />
+              </div>
+              <div>
+                <label className="block text-netflix-light font-medium mb-1">Streaming API Base URL</label>
+                <input
+                  type="url"
+                  value={tloV3BaseUrl}
+                  onChange={(e) => setTloV3BaseUrl(e.target.value)}
+                  onBlur={() => { appSettings.setTloV3BaseUrl(tloV3BaseUrl); toast.success('Streaming API URL saved'); }}
+                  placeholder="https://tlo.sh/v4/api/streams"
+                  className="w-full bg-netflix-dark border border-netflix-gray/30 rounded-lg px-4 py-2 text-netflix-light placeholder-netflix-gray/60 focus:border-netflix-red focus:outline-none focus:ring-1 focus:ring-netflix-red/50"
+                />
+                <p className="text-xs text-netflix-gray mt-1">Required for loading movie and TV stream sources.</p>
+              </div>
+            </div>
+          </SettingSection>
+
           <SettingSection title="Playback" description="Control how videos play">
             <ToggleSwitch
               label="Autoplay"
@@ -623,7 +657,7 @@ export default function SettingsPage() {
                 </svg>
               </div>
               <div>
-                <h3 className="text-xl font-bold text-netflix-light">CineStream</h3>
+                <h3 className="text-xl font-bold text-netflix-light">SanctionTV</h3>
                 <p className="text-netflix-gray text-sm">Version 2.0.0</p>
                 <p className="text-netflix-gray text-xs mt-1">Stream movies and TV shows</p>
               </div>

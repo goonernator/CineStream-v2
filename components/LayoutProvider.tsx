@@ -39,9 +39,9 @@ export default function LayoutProvider({ children }: LayoutProviderProps) {
       setStoredLayout(newLayout);
     };
 
-    window.addEventListener('cinestream:profile-changed', handleProfileChange);
+    window.addEventListener('sanctiontv:profile-changed', handleProfileChange);
     return () => {
-      window.removeEventListener('cinestream:profile-changed', handleProfileChange);
+      window.removeEventListener('sanctiontv:profile-changed', handleProfileChange);
     };
   }, []);
 

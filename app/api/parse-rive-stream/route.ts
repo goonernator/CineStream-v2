@@ -123,7 +123,36 @@ interface ScrapperProviderResponse {
 }
 
 const SCRAPPER_URL = 'https://scrapper.rivestream.org';
-type RiveProvider = 'flowcast' | 'hindicast';
+const BACKENDFETCH_BASE = 'https://rivestream.org/api';
+type RiveProvider = 'flowcast' | 'hindicast' | 'guru';
+
+const BACKENDFETCH_SERVICES: RiveProvider[] = ['flowcast', 'hindicast', 'guru'];
+
+/** Build backendfetch URL: id=TMDB_ID, service=flowcast|hindicast|guru, season/episode for TV. */
+function buildBackendfetchUrl(
+  type: 'movie' | 'tv',
+  tmdbId: string,
+  secretKey: string,
+  service: RiveProvider,
+  season?: string | null,
+  episode?: string | null
+): string {
+  const params = new URLSearchParams({
+    service,
+    secretKey,
+    proxyMode: 'noProxy',
+  });
+  if (type === 'movie') {
+    params.set('requestID', 'movieVideoProvider');
+    params.set('id', tmdbId);
+  } else {
+    params.set('requestID', 'tvVideoProvider');
+    params.set('id', tmdbId);
+    params.set('season', season ?? '');
+    params.set('episode', episode ?? '');
+  }
+  return `${BACKENDFETCH_BASE}/backendfetch?${params.toString()}`;
+}
 
 function buildProviderUrl(
   provider: RiveProvider,
@@ -139,6 +168,47 @@ function buildProviderUrl(
   return `${SCRAPPER_URL}/api/provider?provider=${provider}&id=${tmdbId}&season=${season}&episode=${episode}&secretKey=${encodeURIComponent(secretKey)}&proxyMode=`;
 }
 
+const RIVESTREAM_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Accept: 'application/json',
+  Origin: 'https://rivestream.org',
+  Referer: 'https://rivestream.org/',
+};
+
+/** Headers for backendfetch: Referer from Valhalla, no Origin (avoids 403). */
+const BACKENDFETCH_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Accept: 'application/json',
+  Referer: 'https://proxy.valhallastream.dpdns.org/',
+};
+
+/** Fetch rivestream.org backendfetch for a given service (returns same shape as scrapper). */
+async function fetchBackendfetch(url: string): Promise<ScrapperProviderResponse> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetchWithRetry(
+      url,
+      { headers: BACKENDFETCH_HEADERS, signal: controller.signal },
+      {
+        maxRetries: 2,
+        initialDelay: 1000,
+        retryable: (error) => {
+          if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('timeout'))) return false;
+          return error instanceof Error && (
+            error.message.includes('fetch') || error.message.includes('network') ||
+            error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND') || error.message.includes('Server error: 5')
+          );
+        },
+      }
+    );
+    if (!response.ok) throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+    return (await response.json()) as ScrapperProviderResponse;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function fetchRiveProvider(providerUrl: string): Promise<ScrapperProviderResponse> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -147,12 +217,7 @@ async function fetchRiveProvider(providerUrl: string): Promise<ScrapperProviderR
     const response = await fetchWithRetry(
       providerUrl,
       {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          Accept: 'application/json',
-          Origin: 'https://rivestream.org',
-          Referer: 'https://rivestream.org/',
-        },
+        headers: RIVESTREAM_HEADERS,
         signal: controller.signal,
       },
       {
@@ -205,13 +270,12 @@ export async function GET(request: NextRequest): Promise<NextResponse<Rivestream
   try {
     const secretKey = generateSecretKey(tmdbId);
     const type = typeParam as 'movie' | 'tv';
-    const providers: RiveProvider[] = ['flowcast', 'hindicast'];
 
-    const providerResults = await Promise.allSettled(
-      providers.map(async (provider) => ({
-        provider,
-        data: await fetchRiveProvider(buildProviderUrl(provider, type, tmdbId, secretKey, season, episode)),
-      }))
+    // backendfetch for all services: id=TMDB_ID, season/episode for TV
+    const serviceResults = await Promise.allSettled(
+      BACKENDFETCH_SERVICES.map((service) =>
+        fetchBackendfetch(buildBackendfetchUrl(type, tmdbId, secretKey, service, season, episode)).then((res) => ({ service, data: res.data }))
+      )
     );
 
     const streams: RiveStream[] = [];
@@ -219,16 +283,15 @@ export async function GET(request: NextRequest): Promise<NextResponse<Rivestream
     const seenStreamUrls = new Set<string>();
     const seenCaptionUrls = new Set<string>();
 
-    for (const result of providerResults) {
-      if (result.status !== 'fulfilled') {
-        logger.warn('Error fetching rivestream provider:', result.reason);
-        continue;
-      }
+    const serviceLabels: Record<RiveProvider, string> = {
+      flowcast: 'Flowcast',
+      hindicast: 'HindiCast',
+      guru: 'Guru',
+    };
 
-      const { provider, data } = result.value;
-      const fallbackLabel = provider === 'flowcast' ? 'Flowcast' : 'HindiCast';
-
-      for (const source of data.data?.sources || []) {
+    function addSources(data: ScrapperProviderResponse['data'], provider: RiveProvider) {
+      const fallbackLabel = serviceLabels[provider];
+      for (const source of data?.sources || []) {
         if (!source.url || seenStreamUrls.has(source.url)) continue;
         seenStreamUrls.add(source.url);
         streams.push({
@@ -239,16 +302,34 @@ export async function GET(request: NextRequest): Promise<NextResponse<Rivestream
           format: source.format || 'mp4',
         });
       }
+      for (const caption of data?.captions || []) {
+        if (!caption.file || !caption.label || seenCaptionUrls.has(caption.file)) continue;
+        seenCaptionUrls.add(caption.file);
+        captions.push({
+          label: caption.label,
+          url: caption.file,
+          language: caption.label.replace(/\s*-\s*(FlowCast|HindiCast|Guru)$/i, '').trim(),
+        });
+      }
+    }
 
-      if (provider === 'flowcast') {
-        for (const caption of data.data?.captions || []) {
-          if (!caption.file || !caption.label || seenCaptionUrls.has(caption.file)) continue;
-          seenCaptionUrls.add(caption.file);
-          captions.push({
-            label: caption.label,
-            url: caption.file,
-            language: caption.label.replace(' - FlowCast', '').trim(),
-          });
+    for (let i = 0; i < BACKENDFETCH_SERVICES.length; i++) {
+      const result = serviceResults[i];
+      const service = BACKENDFETCH_SERVICES[i];
+      if (result?.status === 'fulfilled' && result.value.data) {
+        addSources(result.value.data, service);
+      } else {
+        if (result?.status === 'rejected') {
+          logger.warn(`${service} backendfetch failed:`, result.reason);
+        }
+        // Fallback: backendfetch often 403s from server; use scrapper for this service
+        try {
+          const scrapperRes = await fetchRiveProvider(
+            buildProviderUrl(service, type, tmdbId, secretKey, season, episode)
+          );
+          if (scrapperRes.data) addSources(scrapperRes.data, service);
+        } catch (e) {
+          logger.warn(`${service} scrapper fallback failed:`, e);
         }
       }
     }

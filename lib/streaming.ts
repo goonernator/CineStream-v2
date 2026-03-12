@@ -1,9 +1,10 @@
 import { fetchWithRetry } from './retry';
 import { logger } from './logger';
+import { appSettings } from './appSettings';
 
 export type StreamType = 'direct' | 'iframe';
 
-export type StreamProvider = 'sanction' | 'flowcast' | 'hindicast' | 'vidlink';
+export type StreamProvider = 'sanction' | 'flowcast' | 'hindicast' | 'guru' | 'vidlink';
 
 export interface StreamSource {
   url: string;
@@ -53,39 +54,19 @@ export interface StreamAPIResponse {
         type?: string;
         resolution?: string;
         bandwidth?: string;
+        quality?: number;
       }>;
       quality_options?: Array<{
         url: string;
         resolution?: string;
         bandwidth?: string;
       }>;
+      subtitles?: Array<{ format?: string; label: string; url: string }>;
     };
   };
+  episode_info?: { episode_number?: number; name?: string; overview?: string; season_number?: number; still_path?: string };
   tmdb_info?: any;
   [key: string]: any;
-}
-
-function getRiveProvider(sourceLabel?: string, providerHint?: string): StreamProvider {
-  const hint = (providerHint || '').toLowerCase();
-  if (hint.includes('hindicast')) return 'hindicast';
-  const label = (sourceLabel || '').toLowerCase();
-  return label.includes('hindicast') ? 'hindicast' : 'flowcast';
-}
-
-function getRivePlayableUrl(url: string): string {
-  if (!url) return url;
-  if (!(url.startsWith('http://') || url.startsWith('https://'))) return url;
-  const isValhalla = url.includes('valhallastream');
-
-  const isElectron = typeof window !== 'undefined' && (window as any).electron;
-  // Route Rivestream/Valhalla through Next.js API even in Electron.
-  // Electron's custom protocol path has stricter header behavior and is harder to debug.
-  if (isValhalla) {
-    return `/api/proxy-hls?url=${encodeURIComponent(url)}`;
-  }
-  return isElectron
-    ? `proxy-hls:?url=${encodeURIComponent(url)}`
-    : `/api/proxy-hls?url=${encodeURIComponent(url)}`;
 }
 
 export const streaming = {
@@ -129,7 +110,10 @@ export const streaming = {
 
   // Fetch movie stream data from tlo.sh v3 API
   async getMovieStreamData(TMDB_ID: number): Promise<StreamAPIResponse | null> {
-    const response = await this.fetchWithTimeout(`/api/proxy-stream?type=movie&tmdbId=${TMDB_ID}`, 60000); // 60 seconds
+    const baseUrl = appSettings.getTloV3BaseUrl();
+    const params = new URLSearchParams({ type: 'movie', tmdbId: String(TMDB_ID) });
+    if (baseUrl) params.set('baseUrl', baseUrl);
+    const response = await this.fetchWithTimeout(`/api/proxy-stream?${params.toString()}`, 60000); // 60 seconds
     if (!response.ok) {
       // 404 is expected when no stream is available - return null instead of throwing
       if (response.status === 404) {
@@ -137,7 +121,7 @@ export const streaming = {
       }
       // 503 means API is not configured
       if (response.status === 503) {
-        logger.warn('tlo.sh v3 API not configured - check TLO_V3_BASE_URL environment variable');
+        logger.warn('Streaming API not configured - set TLO V3 Base URL in Settings');
         return null;
       }
       throw new Error(`Failed to fetch movie stream: ${response.statusText}`);
@@ -148,7 +132,10 @@ export const streaming = {
   // Fetch TV show stream data from tlo.sh v3 API
   async getTVStreamData(TMDB_ID: number, SEASON: number, EPISODE: number): Promise<StreamAPIResponse | null> {
     try {
-      const response = await this.fetchWithTimeout(`/api/proxy-stream?type=tv&tmdbId=${TMDB_ID}&season=${SEASON}&episode=${EPISODE}`, 60000); // 60 seconds
+      const baseUrl = appSettings.getTloV3BaseUrl();
+      const params = new URLSearchParams({ type: 'tv', tmdbId: String(TMDB_ID), season: String(SEASON), episode: String(EPISODE) });
+      if (baseUrl) params.set('baseUrl', baseUrl);
+      const response = await this.fetchWithTimeout(`/api/proxy-stream?${params.toString()}`, 60000); // 60 seconds
       if (!response.ok) {
         // 404 is expected when no stream is available - return null instead of throwing
         if (response.status === 404) {
@@ -156,7 +143,7 @@ export const streaming = {
         }
         // 503 means API is not configured
         if (response.status === 503) {
-          logger.warn('tlo.sh v3 API not configured - check TLO_V3_BASE_URL environment variable');
+          logger.warn('Streaming API not configured - set TLO V3 Base URL in Settings');
           return null;
         }
         const errorText = await response.text();
@@ -170,411 +157,158 @@ export const streaming = {
       }
   },
 
-  // Fetch movie stream data from Rivestream (Flowcast)
-  async getRivestreamMovieData(TMDB_ID: number): Promise<{ sources: StreamSource[]; captions: StreamCaption[] }> {
-    try {
-      const response = await this.fetchWithTimeout(`/api/parse-rive-stream?type=movie&tmdbId=${TMDB_ID}`, 30000); // 30 seconds
-      if (!response.ok) {
-        logger.warn('Rivestream fetch failed:', response.statusText);
-        return { sources: [], captions: [] };
-      }
-      const data = await response.json();
-      
-      // Convert Rivestream response to StreamSource format
-      const sources: StreamSource[] = [];
-      if (data.success && data.streams && data.streams.length > 0) {
-        for (const stream of data.streams) {
-          sources.push({
-            url: getRivePlayableUrl(stream.url),
-            type: 'direct' as StreamType,
-            provider: getRiveProvider(stream.source, (stream as any).provider),
-            quality: stream.quality || 'Auto',
-          });
-        }
-      }
-      
-      // Convert captions - proxy through our API to avoid CORS
-      const captions: StreamCaption[] = [];
-      if (data.captions && data.captions.length > 0) {
-        for (const caption of data.captions) {
-          // Proxy subtitle URL to avoid CORS issues
-          const proxiedUrl = `/api/proxy-subtitle?url=${encodeURIComponent(caption.url)}`;
-          captions.push({
-            label: caption.label,
-            url: proxiedUrl,
-            language: caption.language,
-            provider: 'flowcast' as StreamProvider,
-          });
-        }
-      }
-      
-      return { sources, captions };
-    } catch (error) {
-      logger.warn('Error fetching Rivestream movie data:', error);
-      return { sources: [], captions: [] };
-    }
+  // Map API provider name to StreamProvider
+  mapProvider(providerName: string): StreamProvider {
+    const name = (providerName || '').toLowerCase();
+    if (name.includes('flowcast')) return 'flowcast';
+    if (name.includes('hindicast')) return 'hindicast';
+    if (name.includes('sanction')) return 'sanction';
+    if (name.includes('guru')) return 'guru';
+    if (name.includes('vidlink')) return 'vidlink';
+    return 'sanction';
   },
 
-  // Fetch TV show stream data from Rivestream (Flowcast)
-  async getRivestreamTVData(TMDB_ID: number, SEASON: number, EPISODE: number): Promise<{ sources: StreamSource[]; captions: StreamCaption[] }> {
-    try {
-      const response = await this.fetchWithTimeout(`/api/parse-rive-stream?type=tv&tmdbId=${TMDB_ID}&season=${SEASON}&episode=${EPISODE}`, 30000); // 30 seconds
-      if (!response.ok) {
-        logger.warn('Rivestream TV fetch failed:', response.statusText);
-        return { sources: [], captions: [] };
-      }
-      const data = await response.json();
-      
-      // Convert Rivestream response to StreamSource format
-      const sources: StreamSource[] = [];
-      if (data.success && data.streams && data.streams.length > 0) {
-        for (const stream of data.streams) {
-          sources.push({
-            url: getRivePlayableUrl(stream.url),
-            type: 'direct' as StreamType,
-            provider: getRiveProvider(stream.source, (stream as any).provider),
-            quality: stream.quality || 'Auto',
-          });
-        }
-      }
-      
-      // Convert captions - proxy through our API to avoid CORS
-      const captions: StreamCaption[] = [];
-      if (data.captions && data.captions.length > 0) {
-        for (const caption of data.captions) {
-          // Proxy subtitle URL to avoid CORS issues
-          const proxiedUrl = `/api/proxy-subtitle?url=${encodeURIComponent(caption.url)}`;
-          captions.push({
-            label: caption.label,
-            url: proxiedUrl,
-            language: caption.language,
-            provider: 'flowcast' as StreamProvider,
-          });
-        }
-      }
-      
-      return { sources, captions };
-    } catch (error) {
-      logger.warn('Error fetching Rivestream TV data:', error);
-      return { sources: [], captions: [] };
-    }
-  },
-
-  // Fetch movie stream data from Vidlink
-  async getVidlinkMovieData(TMDB_ID: number): Promise<{ sources: StreamSource[]; captions: StreamCaption[] }> {
-    try {
-      const response = await this.fetchWithTimeout(`/api/parse-vidlink?type=movie&tmdbId=${TMDB_ID}`, 60000); // 60 seconds (Puppeteer can be slow)
-      if (!response.ok) {
-        logger.warn('Vidlink fetch failed:', response.statusText);
-        return { sources: [], captions: [] };
-      }
-      const data = await response.json();
-      
-      // Convert Vidlink response to StreamSource format
-      const sources: StreamSource[] = [];
-      if (data.success && data.streams && data.streams.length > 0) {
-        for (const stream of data.streams) {
-          // Use the .m3u8 URL exactly as extracted - don't modify it
-          // Pass cookies separately through proxy URL params
-          try {
-            // Build proxy URL with stream URL and optional cookies
-            let proxyUrl = `/api/proxy-hls?url=${encodeURIComponent(stream.url)}`;
-            if ((stream as any).cookies) {
-              proxyUrl += `&cookies=${encodeURIComponent((stream as any).cookies)}`;
-            }
-            
-            sources.push({
-              url: proxyUrl,
-              type: 'direct' as StreamType,
-              provider: 'vidlink' as StreamProvider,
-              quality: stream.quality || 'Auto',
-            });
-          } catch (error) {
-            logger.warn('Error processing vidlink stream URL:', error);
-            // Fallback: just use the stream URL as-is
-            const proxyUrl = `/api/proxy-hls?url=${encodeURIComponent(stream.url)}`;
-            
-            sources.push({
-              url: proxyUrl,
-              type: 'direct' as StreamType,
-              provider: 'vidlink' as StreamProvider,
-              quality: stream.quality || 'Auto',
-            });
-          }
-        }
-      }
-      
-      return { sources, captions: [] };
-    } catch (error) {
-      logger.warn('Error fetching Vidlink movie data:', error);
-      return { sources: [], captions: [] };
-    }
-  },
-
-  // Fetch TV show stream data from Vidlink
-  async getVidlinkTVData(TMDB_ID: number, SEASON: number, EPISODE: number): Promise<{ sources: StreamSource[]; captions: StreamCaption[] }> {
-    try {
-      const response = await this.fetchWithTimeout(`/api/parse-vidlink?type=tv&tmdbId=${TMDB_ID}&season=${SEASON}&episode=${EPISODE}`, 60000); // 60 seconds
-      if (!response.ok) {
-        logger.warn('Vidlink TV fetch failed:', response.statusText);
-        return { sources: [], captions: [] };
-      }
-      const data = await response.json();
-      
-      // Convert Vidlink response to StreamSource format
-      const sources: StreamSource[] = [];
-      if (data.success && data.streams && data.streams.length > 0) {
-        for (const stream of data.streams) {
-          // Use the .m3u8 URL exactly as extracted - don't modify it
-          // Pass cookies separately through proxy URL params
-          try {
-            // Build proxy URL with stream URL and optional cookies
-            let proxyUrl = `/api/proxy-hls?url=${encodeURIComponent(stream.url)}`;
-            if ((stream as any).cookies) {
-              proxyUrl += `&cookies=${encodeURIComponent((stream as any).cookies)}`;
-            }
-            
-            sources.push({
-              url: proxyUrl,
-              type: 'direct' as StreamType,
-              provider: 'vidlink' as StreamProvider,
-              quality: stream.quality || 'Auto',
-            });
-          } catch (error) {
-            logger.warn('Error processing vidlink stream URL:', error);
-            // Fallback: just use the stream URL as-is
-            const proxyUrl = `/api/proxy-hls?url=${encodeURIComponent(stream.url)}`;
-            
-            sources.push({
-              url: proxyUrl,
-              type: 'direct' as StreamType,
-              provider: 'vidlink' as StreamProvider,
-              quality: stream.quality || 'Auto',
-            });
-          }
-        }
-      }
-      
-      return { sources, captions: [] };
-    } catch (error) {
-      logger.warn('Error fetching Vidlink TV data:', error);
-      return { sources: [], captions: [] };
-    }
-  },
-
-  // Parse stream data and return sources
+  // Parse stream data and return sources (v3 and v4 API formats)
   parseStreamSources(streamData: StreamAPIResponse): StreamSource[] {
     const sources: StreamSource[] = [];
+    const addProxied = (url: string, quality: string, provider: StreamProvider) => {
+      if (!url) return;
+      // Use Next.js proxy in both browser and Electron so streams are same-origin (avoids custom-protocol/206 issues in Electron)
+      const proxyUrl = `/api/proxy-hls?url=${encodeURIComponent(url)}`;
+      sources.push({ url: proxyUrl, type: 'direct', provider, quality });
+    };
 
     // tlo.sh v3 API format: { success: true, source: "...", sources: [{ file: "...", quality: 720, type: "hls" }, ...] }
     if (streamData.success && Array.isArray(streamData.sources)) {
-      // Handle new format with direct sources array
-      const allSources = [];
-      
-      // Add the main source if it exists (exclude 1080p as most are actually 720p)
+      const allSources: { url: string; quality: number }[] = [];
       if (streamData.source && streamData.quality !== 1080) {
-        allSources.push({
-          url: streamData.source,
-          quality: streamData.quality || 720,
-          type: streamData.type || 'hls',
-        });
+        allSources.push({ url: streamData.source, quality: streamData.quality || 720 });
       }
-      
-      // Add all sources from the sources array (exclude 1080p as most are actually 720p)
       for (const source of streamData.sources) {
         if (source.file && source.quality !== 1080) {
-          allSources.push({
-            url: source.file,
-            quality: source.quality || 720,
-            type: source.type || 'hls',
-          });
+          allSources.push({ url: source.file, quality: source.quality || 720 });
         }
       }
-      
-      // Remove duplicates based on URL
-      const uniqueSources = allSources.filter((source, index, self) =>
-        index === self.findIndex((s) => s.url === source.url)
-      );
-      
-      // Sort by quality (highest first)
-      uniqueSources.sort((a, b) => (b.quality || 0) - (a.quality || 0));
-      
-      // Add all quality options (proxied through Electron protocol to bypass CORS)
-      for (const stream of uniqueSources) {
-        if (stream.url) {
-          // Use Electron protocol in Electron, Next.js API in browser
-          const isElectron = typeof window !== 'undefined' && (window as any).electron;
-          const proxyUrl = isElectron 
-            ? `proxy-hls:?url=${encodeURIComponent(stream.url)}`
-            : `/api/proxy-hls?url=${encodeURIComponent(stream.url)}`;
-          
-          sources.push({
-            url: proxyUrl,
-            type: 'direct',
-            provider: 'sanction',
-            quality: stream.quality ? `${stream.quality}p` : 'Unknown',
-          });
-        }
+      const unique = allSources.filter((s, i, self) => self.findIndex((x) => x.url === s.url) === i);
+      unique.sort((a, b) => b.quality - a.quality);
+      for (const s of unique) {
+        addProxied(s.url, `${s.quality}p`, 'sanction');
       }
+      return sources;
     }
-    // Legacy tlo.sh API format: { streams: { "provider-name": { streams: [...] } } }
-    else if (streamData.streams && typeof streamData.streams === 'object' && !Array.isArray(streamData.streams)) {
-      // Iterate through each provider (e.g., "vidsrc-embed.ru")
+
+    // tlo.sh v4 (and legacy) format: { streams: { "Provider": { streams: [...], quality_options: [...] } } }
+    if (streamData.streams && typeof streamData.streams === 'object' && !Array.isArray(streamData.streams)) {
+      const seenUrls = new Set<string>();
       for (const [providerName, providerData] of Object.entries(streamData.streams)) {
-        if (providerData && typeof providerData === 'object') {
-          // Get quality streams - ONLY use quality streams, NO embed URLs
-          const qualityStreams = (providerData.streams as Array<{ url?: string; type?: string; bandwidth?: string; resolution?: string; label?: string }> | undefined)?.filter((s) => s.type === 'quality') || [];
-          const options = (providerData.quality_options as Array<{ url?: string; bandwidth?: string; resolution?: string }> | undefined) || [];
-          
-          // Combine all available quality streams
-          const allQualityStreams = [
-            ...qualityStreams.map((s) => ({
-              url: s.url,
-              bandwidth: parseInt(s.bandwidth || '0'),
-              resolution: s.resolution,
-              label: s.label,
-            })),
-            ...options.map((o) => ({
-              url: o.url,
-              bandwidth: parseInt(o.bandwidth || '0'),
-              resolution: o.resolution,
-              label: o.resolution,
-            })),
-          ];
-          
-          if (allQualityStreams.length > 0) {
-            // Sort by bandwidth (highest first)
-            allQualityStreams.sort((a, b) => b.bandwidth - a.bandwidth);
-            
-            // Add all quality options (proxied through Electron protocol to bypass CORS)
-            for (const stream of allQualityStreams) {
-              if (stream.url) {
-                // Use Electron protocol in Electron, Next.js API in browser
-                const isElectron = typeof window !== 'undefined' && (window as any).electron;
-                const proxyUrl = isElectron 
-                  ? `proxy-hls:?url=${encodeURIComponent(stream.url)}`
-                  : `/api/proxy-hls?url=${encodeURIComponent(stream.url)}`;
-                
-                sources.push({
-                  url: proxyUrl,
-                  type: 'direct',
-                  provider: 'sanction',
-                  quality: stream.label || stream.resolution || 'Unknown',
-                });
-              }
-            }
-          }
+        if (!providerData || typeof providerData !== 'object') continue;
+        const provider = this.mapProvider(providerName);
+        const rawStreams = providerData.streams as Array<{ url?: string; type?: string; quality?: number; bandwidth?: string; resolution?: string; label?: string }> | undefined;
+        const options = (providerData.quality_options as Array<{ url?: string; bandwidth?: string; resolution?: string }> | undefined) || [];
+
+        // v4 Flowcast/Hindicast: streams[] with { quality, url }
+        const v4Streams = (rawStreams || [])
+          .filter((s) => s.url && typeof (s as { quality?: number }).quality === 'number')
+          .map((s) => ({
+            url: s.url!,
+            quality: (s as { quality: number }).quality,
+            label: `${(s as { quality: number }).quality}p`,
+          }));
+        // Sanction-style: type === 'quality' or quality_options
+        const qualityStreams = (rawStreams || []).filter((s) => s.url && s.type === 'quality').map((s) => ({
+          url: s.url!,
+          bandwidth: parseInt(s.bandwidth || '0'),
+          resolution: s.resolution,
+          label: s.label || s.resolution || 'Unknown',
+        }));
+        const optionStreams = options.map((o) => ({
+          url: o.url!,
+          bandwidth: parseInt(o.bandwidth || '0'),
+          resolution: o.resolution,
+          label: o.resolution || 'Unknown',
+        }));
+
+        const combined = [
+          ...v4Streams.map((s) => ({ url: s.url, sortKey: s.quality, label: s.label })),
+          ...qualityStreams.map((s) => ({ url: s.url, sortKey: s.bandwidth, label: s.label })),
+          ...optionStreams.map((s) => ({ url: s.url, sortKey: s.bandwidth, label: s.label })),
+        ].filter((s) => s.url && !seenUrls.has(s.url));
+
+        for (const s of combined) {
+          seenUrls.add(s.url);
         }
-        
-        // If we found streams from first provider, use those
-        if (sources.length > 0) break;
+        combined.sort((a, b) => b.sortKey - a.sortKey);
+        for (const s of combined) {
+          addProxied(s.url, s.label, provider);
+        }
       }
     }
 
     return sources;
   },
 
-  // Get all available stream sources for a movie (async)
-  // Fetches from tlo.sh, Rivestream (Flowcast), and Vidlink in parallel
-  async getMovieStreamSourcesAsync(TMDB_ID: number, options: StreamFetchOptions = {}): Promise<StreamResult> {
-    try {
-      const skipVidlinkInDev = process.env.NODE_ENV === 'development';
-      const shouldSkipVidlink = skipVidlinkInDev || !!options.skipVidlink;
-      // Fetch from all sources in parallel
-      const [tloResult, rivestreamResult, vidlinkResult] = await Promise.allSettled([
-        this.getMovieStreamData(TMDB_ID).then(data => data ? this.parseStreamSources(data) : []),
-        this.getRivestreamMovieData(TMDB_ID),
-        shouldSkipVidlink ? Promise.resolve({ sources: [], captions: [] }) : this.getVidlinkMovieData(TMDB_ID),
-      ]);
-
-      const tloSources = tloResult.status === 'fulfilled' ? tloResult.value : [];
-      const rivestreamData = rivestreamResult.status === 'fulfilled' ? rivestreamResult.value : { sources: [], captions: [] };
-      const vidlinkData = vidlinkResult.status === 'fulfilled' ? vidlinkResult.value : { sources: [], captions: [] };
-
-      // Only log unexpected errors (not 404s which are expected)
-      if (tloResult.status === 'rejected') {
-        const error = tloResult.reason;
-        // Don't log 404 errors as they're expected when no stream is available
-        if (error instanceof Error && !error.message.includes('Not Found')) {
-                logger.warn('tlo.sh movie fetch failed:', error.message);
-        }
+  // Parse captions from v4 (and legacy) stream response: streams[provider].subtitles
+  parseStreamCaptions(streamData: StreamAPIResponse): StreamCaption[] {
+    const captions: StreamCaption[] = [];
+    const seen = new Set<string>();
+    if (!streamData.streams || typeof streamData.streams !== 'object' || Array.isArray(streamData.streams)) {
+      return captions;
+    }
+    for (const [providerName, providerData] of Object.entries(streamData.streams)) {
+      const subs = (providerData as { subtitles?: Array<{ label: string; url: string }> })?.subtitles;
+      if (!Array.isArray(subs)) continue;
+      const provider = this.mapProvider(providerName);
+      for (const sub of subs) {
+        if (!sub.url || !sub.label) continue;
+        const key = `${provider}:${sub.url}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const isExternal = sub.url.startsWith('http://') || sub.url.startsWith('https://');
+        const captionUrl = isExternal ? `/api/proxy-subtitle?url=${encodeURIComponent(sub.url)}` : sub.url;
+        captions.push({
+          label: sub.label,
+          url: captionUrl,
+          language: sub.label.split(/\s*[-–]\s*/)[0]?.trim() || sub.label,
+          provider,
+        });
       }
-      if (rivestreamResult.status === 'rejected') {
-        const error = rivestreamResult.reason;
-        // Don't log 404 errors as they're expected when no stream is available
-        if (error instanceof Error && !error.message.includes('Not Found')) {
-                logger.warn('Rivestream movie fetch failed:', error.message);
-        }
-      }
-      if (vidlinkResult.status === 'rejected') {
-        const error = vidlinkResult.reason;
-        // Don't log 404 errors as they're expected when no stream is available
-        if (error instanceof Error && !error.message.includes('Not Found')) {
-                logger.warn('Vidlink movie fetch failed:', error.message);
-        }
-      }
-
-      // Combine sources: Flowcast (rivestream) first as priority, then Vidlink, then tlo.sh as fallback
-      const allSources = [...rivestreamData.sources, ...vidlinkData.sources, ...tloSources];
-      
-      logger.debug(`Movie sources: ${rivestreamData.sources.length} Flowcast, ${vidlinkData.sources.length} Vidlink, ${tloSources.length} tlo.sh, ${rivestreamData.captions.length} captions`);
-      
-      return { sources: allSources, captions: rivestreamData.captions };
-          } catch (error) {
-            logger.error('Error fetching movie streams:', error);
-            return { sources: [], captions: [] };
-          }
+    }
+    return captions;
   },
 
-  // Get all available stream sources for a TV show (async)
-  // Fetches from tlo.sh, Rivestream (Flowcast), and Vidlink in parallel
-  async getTVStreamSourcesAsync(TMDB_ID: number, SEASON: number, EPISODE: number, options: StreamFetchOptions = {}): Promise<StreamResult> {
+  // Get all available stream sources for a movie (TLO v3/v4 API)
+  async getMovieStreamSourcesAsync(TMDB_ID: number, _options: StreamFetchOptions = {}): Promise<StreamResult> {
     try {
-      const skipVidlinkInDev = process.env.NODE_ENV === 'development';
-      const shouldSkipVidlink = skipVidlinkInDev || !!options.skipVidlink;
-      // Fetch from all sources in parallel
-      const [tloResult, rivestreamResult, vidlinkResult] = await Promise.allSettled([
-        this.getTVStreamData(TMDB_ID, SEASON, EPISODE).then(data => data ? this.parseStreamSources(data) : []),
-        this.getRivestreamTVData(TMDB_ID, SEASON, EPISODE),
-        shouldSkipVidlink ? Promise.resolve({ sources: [], captions: [] }) : this.getVidlinkTVData(TMDB_ID, SEASON, EPISODE),
-      ]);
-
-      const tloSources = tloResult.status === 'fulfilled' ? tloResult.value : [];
-      const rivestreamData = rivestreamResult.status === 'fulfilled' ? rivestreamResult.value : { sources: [], captions: [] };
-      const vidlinkData = vidlinkResult.status === 'fulfilled' ? vidlinkResult.value : { sources: [], captions: [] };
-
-      // Only log unexpected errors (not 404s which are expected)
-      if (tloResult.status === 'rejected') {
-        const error = tloResult.reason;
-        // Don't log 404 errors as they're expected when no stream is available
-        if (error instanceof Error && !error.message.includes('Not Found')) {
-          logger.warn('tlo.sh TV fetch failed:', error.message);
-        }
+      const data = await this.getMovieStreamData(TMDB_ID);
+      const sources = data ? this.parseStreamSources(data) : [];
+      const captions = data ? this.parseStreamCaptions(data) : [];
+      if (!data && process.env.NODE_ENV !== 'test') {
+        logger.debug('No stream for movie TMDB_ID:', TMDB_ID);
       }
-      if (rivestreamResult.status === 'rejected') {
-        const error = rivestreamResult.reason;
-        // Don't log 404 errors as they're expected when no stream is available
-        if (error instanceof Error && !error.message.includes('Not Found')) {
-                logger.warn('Rivestream TV fetch failed:', error.message);
-        }
+      return { sources, captions };
+    } catch (error) {
+      if (error instanceof Error && !error.message.includes('Not Found')) {
+        logger.warn('Movie stream fetch failed:', error.message);
       }
-      if (vidlinkResult.status === 'rejected') {
-        const error = vidlinkResult.reason;
-        // Don't log 404 errors as they're expected when no stream is available
-        if (error instanceof Error && !error.message.includes('Not Found')) {
-                logger.warn('Vidlink TV fetch failed:', error.message);
-        }
-      }
+      return { sources: [], captions: [] };
+    }
+  },
 
-      // Combine sources: Flowcast (rivestream) first as priority, then Vidlink, then tlo.sh as fallback
-      const allSources = [...rivestreamData.sources, ...vidlinkData.sources, ...tloSources];
-      
-            logger.debug(`TV sources: ${rivestreamData.sources.length} Flowcast, ${vidlinkData.sources.length} Vidlink, ${tloSources.length} tlo.sh, ${rivestreamData.captions.length} captions`);
-      
-      return { sources: allSources, captions: rivestreamData.captions };
-          } catch (error) {
-            logger.error('Error fetching TV streams:', error);
-            return { sources: [], captions: [] };
-          }
+  // Get all available stream sources for a TV show (TLO v3/v4 API)
+  async getTVStreamSourcesAsync(TMDB_ID: number, SEASON: number, EPISODE: number, _options: StreamFetchOptions = {}): Promise<StreamResult> {
+    try {
+      const data = await this.getTVStreamData(TMDB_ID, SEASON, EPISODE);
+      const sources = data ? this.parseStreamSources(data) : [];
+      const captions = data ? this.parseStreamCaptions(data) : [];
+      if (!data && process.env.NODE_ENV !== 'test') {
+        logger.debug('No stream for TV TMDB_ID:', TMDB_ID, 'S' + SEASON + 'E' + EPISODE);
+      }
+      return { sources, captions };
+    } catch (error) {
+      if (error instanceof Error && !error.message.includes('Not Found')) {
+        logger.warn('TV stream fetch failed:', error.message);
+      }
+      return { sources: [], captions: [] };
+    }
   },
 };

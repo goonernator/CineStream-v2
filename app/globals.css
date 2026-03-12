@@ -138,7 +138,7 @@ body {
 }
 
 /* Pulsing glow effect for app name - uses current accent color */
-.cinestream-title {
+.sanctiontv-title {
   text-shadow: 0 0 10px color-mix(in srgb, var(--netflix-red) 50%, transparent),
                0 0 20px color-mix(in srgb, var(--netflix-red) 30%, transparent),
                0 0 30px color-mix(in srgb, var(--netflix-red) 20%, transparent);
@@ -464,7 +464,7 @@ body {
 /* Wide Color Gamut Support (P3) */
 @media (color-gamut: p3) {
   /* Enhanced color rendering for P3 displays */
-  .cinestream-title {
+  .sanctiontv-title {
     text-shadow: 0 0 15px color-mix(in srgb, var(--netflix-red) 60%, transparent),
                  0 0 30px color-mix(in srgb, var(--netflix-red) 40%, transparent),
                  0 0 45px color-mix(in srgb, var(--netflix-red) 25%, transparent);
@@ -474,7 +474,7 @@ body {
 /* Rec2020 Color Gamut (HDR10) */
 @media (color-gamut: rec2020) {
   /* Maximum color rendering for HDR10 displays */
-  .cinestream-title {
+  .sanctiontv-title {
     text-shadow: 0 0 20px color-mix(in srgb, var(--netflix-red) 70%, transparent),
                  0 0 40px color-mix(in srgb, var(--netflix-red) 50%, transparent),
                  0 0 60px color-mix(in srgb, var(--netflix-red) 30%, transparent);

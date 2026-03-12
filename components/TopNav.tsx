@@ -47,14 +47,14 @@ export default function TopNav() {
       setAuthState(auth.getAuthState());
     };
 
-    window.addEventListener('cinestream:open-search', handleOpenSearch);
-    window.addEventListener('cinestream:close-modal', handleCloseModal);
-    window.addEventListener('cinestream:profile-changed', handleProfileChange);
+    window.addEventListener('sanctiontv:open-search', handleOpenSearch);
+    window.addEventListener('sanctiontv:close-modal', handleCloseModal);
+    window.addEventListener('sanctiontv:profile-changed', handleProfileChange);
 
     return () => {
-      window.removeEventListener('cinestream:open-search', handleOpenSearch);
-      window.removeEventListener('cinestream:close-modal', handleCloseModal);
-      window.removeEventListener('cinestream:profile-changed', handleProfileChange);
+      window.removeEventListener('sanctiontv:open-search', handleOpenSearch);
+      window.removeEventListener('sanctiontv:close-modal', handleCloseModal);
+      window.removeEventListener('sanctiontv:profile-changed', handleProfileChange);
     };
   }, []);
 
@@ -160,7 +160,7 @@ export default function TopNav() {
               {/* Logo */}
               <Link href="/" className="flex items-center gap-2 group">
                 <span className="text-2xl font-bold text-netflix-red transition-transform group-hover:scale-105">
-                  Cinestream
+                  SanctionTV
                 </span>
               </Link>
 

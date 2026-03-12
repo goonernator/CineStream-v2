@@ -2,7 +2,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const SERVICE_NAME = 'CineStream';
+const SERVICE_NAME = 'SanctionTV';
 const TOKEN_ACCOUNT = 'discord_self_token';
 const MIN_UPDATE_INTERVAL_MS = 1000;
 const RESTART_BACKOFF_MS = 5000;
@@ -409,7 +409,7 @@ class DiscordSelfPresenceService {
     const defaultLargeText =
       process.env.CINESTREAM_DISCORD_LARGE_TEXT ||
       process.env.CINESTREAM_DISCORD_TEST_LARGE_TEXT ||
-      'CineStream';
+      'SanctionTV';
     const smallImageByState =
       payload.playbackState === 'paused'
         ? (process.env.CINESTREAM_DISCORD_SMALL_IMAGE_PAUSED || process.env.CINESTREAM_DISCORD_TEST_SMALL_IMAGE || undefined)

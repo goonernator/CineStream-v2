@@ -38,14 +38,14 @@ export default function KeyboardShortcuts() {
         if (!hasCtrl && !hasShift) {
           e.preventDefault();
           // Trigger search - dispatch custom event
-          window.dispatchEvent(new CustomEvent('cinestream:open-search'));
+          window.dispatchEvent(new CustomEvent('sanctiontv:open-search'));
         }
         break;
 
       case 'k':
         if (hasCtrl) {
           e.preventDefault();
-          window.dispatchEvent(new CustomEvent('cinestream:open-search'));
+          window.dispatchEvent(new CustomEvent('sanctiontv:open-search'));
         }
         break;
 
@@ -62,7 +62,7 @@ export default function KeyboardShortcuts() {
           setShowHelp(false);
         } else {
           // Dispatch close event for modals
-          window.dispatchEvent(new CustomEvent('cinestream:close-modal'));
+          window.dispatchEvent(new CustomEvent('sanctiontv:close-modal'));
         }
         break;
 

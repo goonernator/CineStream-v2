@@ -104,18 +104,18 @@ export default function TitleBar() {
       setAdultContentEnabled(e.detail.enabled);
     };
 
-    window.addEventListener('cinestream:open-search', handleOpenSearch);
-    window.addEventListener('cinestream:close-modal', handleCloseModal);
-    window.addEventListener('cinestream:profile-changed', handleProfileChange);
+    window.addEventListener('sanctiontv:open-search', handleOpenSearch);
+    window.addEventListener('sanctiontv:close-modal', handleCloseModal);
+    window.addEventListener('sanctiontv:profile-changed', handleProfileChange);
     window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('cinestream:adult-content-changed', handleAdultContentChange as EventListener);
+    window.addEventListener('sanctiontv:adult-content-changed', handleAdultContentChange as EventListener);
 
     return () => {
-      window.removeEventListener('cinestream:open-search', handleOpenSearch);
-      window.removeEventListener('cinestream:close-modal', handleCloseModal);
-      window.removeEventListener('cinestream:profile-changed', handleProfileChange);
+      window.removeEventListener('sanctiontv:open-search', handleOpenSearch);
+      window.removeEventListener('sanctiontv:close-modal', handleCloseModal);
+      window.removeEventListener('sanctiontv:profile-changed', handleProfileChange);
       window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('cinestream:adult-content-changed', handleAdultContentChange as EventListener);
+      window.removeEventListener('sanctiontv:adult-content-changed', handleAdultContentChange as EventListener);
     };
   }, []);
 
@@ -139,8 +139,8 @@ export default function TitleBar() {
       electron.discordSelfPresenceUpdate({
         mediaType: 'movie',
         tmdbId: -1,
-        title: 'CineStream',
-        discordTitle: 'CineStream',
+        title: 'SanctionTV',
+        discordTitle: 'SanctionTV',
         episodeName: 'Browsing catalogue',
         playbackState: 'paused',
         forceRawRich: true,
@@ -286,7 +286,7 @@ export default function TitleBar() {
           >
             <div className="absolute inset-0 bg-netflix-red/20 rounded-lg animate-pulse" />
             <h1 className="text-sm font-bold text-netflix-red whitespace-nowrap relative z-10">
-              {pathname === '/anime' ? 'Animestream' : 'Cinestream'}
+              {pathname === '/anime' ? 'Animestream' : 'SanctionTV'}
             </h1>
           </Link>
 

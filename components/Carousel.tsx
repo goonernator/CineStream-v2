@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState, useMemo } from 'react';
 import type { MediaItem } from '@/lib/types';
+import type { WatchProgress } from '@/lib/watchProgress';
 import { filterValidMedia } from '@/lib/mediaFilter';
 import MediaCard from './MediaCard';
 
@@ -9,9 +10,11 @@ interface CarouselProps {
   title: string;
   items: MediaItem[];
   id?: string;
+  /** When set (e.g. Continue Watching), each card uses this progress for the play URL so the correct episode loads. */
+  resumeProgressMap?: Map<number, WatchProgress> | null;
 }
 
-export default function Carousel({ title, items, id }: CarouselProps) {
+export default function Carousel({ title, items, id, resumeProgressMap }: CarouselProps) {
   // Filter items to only show those with thumbnails and ratings
   const validItems = useMemo(() => filterValidMedia(items), [items]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -222,7 +225,7 @@ export default function Carousel({ title, items, id }: CarouselProps) {
                 animation: 'fadeIn 0.3s ease-in',
               }}
             >
-              <MediaCard item={item} />
+              <MediaCard item={item} progressOverride={resumeProgressMap?.get(item.id)} />
             </div>
           ))}
         </div>

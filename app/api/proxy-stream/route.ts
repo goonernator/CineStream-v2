@@ -17,20 +17,19 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Use tlo.sh v3 API from environment variable (not exposed on GitHub)
-    const TLO_V3_BASE_URL = process.env.TLO_V3_BASE_URL;
-    
-    if (!TLO_V3_BASE_URL) {
+    const baseUrlParam = searchParams.get('baseUrl');
+    const baseUrl = (baseUrlParam && baseUrlParam.trim() !== '') ? baseUrlParam.trim().replace(/\/+$/, '') : process.env.TLO_V3_BASE_URL?.replace(/\/+$/, '');
+
+    if (!baseUrl) {
       return NextResponse.json(
-        { error: 'Streaming API not configured' },
+        { error: 'Streaming API not configured. Set Streaming API Base URL in Settings.' },
         { status: 503 }
       );
     }
-    
-    let streamUrl: string;
 
+    let streamUrl: string;
     if (type === 'movie') {
-      streamUrl = `${TLO_V3_BASE_URL}/movie/${tmdbId}`;
+      streamUrl = `${baseUrl}/movie/${tmdbId}`;
     } else if (type === 'tv') {
       if (!season || !episode) {
         return NextResponse.json(
@@ -38,7 +37,7 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      streamUrl = `${TLO_V3_BASE_URL}/tv/${tmdbId}/${season}/${episode}`;
+      streamUrl = `${baseUrl}/tv/${tmdbId}/${season}/${episode}`;
     } else {
       return NextResponse.json(
         { error: 'Invalid type parameter' },

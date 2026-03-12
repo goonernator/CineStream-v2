@@ -61,7 +61,7 @@ function AuthCallbackContent() {
               </svg>
               <p className="text-xl text-green-500 mb-2">Authentication approved!</p>
               <p className="text-netflix-light">
-                Please return to the CineStream app and click <strong>"I've approved the request"</strong> button.
+                Please return to the SanctionTV app and click <strong>"I've approved the request"</strong> button.
               </p>
             </div>
             <p className="text-sm text-netflix-gray">

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, ReactElement } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/auth';
+import { appSettings } from '@/lib/appSettings';
 import { useToast } from '@/lib/toast';
 
 interface ContextMenuProps {
@@ -116,7 +117,7 @@ export default function ContextMenu({ x, y, item, mediaType, onClose }: ContextM
       }
 
       const response = await fetch(
-        `https://api.themoviedb.org/3/account/${accountId}/watchlist?api_key=${process.env.NEXT_PUBLIC_TMDB_API_KEY}&session_id=${sessionId}`,
+        `https://api.themoviedb.org/3/account/${accountId}/watchlist?api_key=${appSettings.getTmdbApiKey()}&session_id=${sessionId}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -157,7 +158,7 @@ export default function ContextMenu({ x, y, item, mediaType, onClose }: ContextM
       }
 
       const response = await fetch(
-        `https://api.themoviedb.org/3/account/${accountId}/favorite?api_key=${process.env.NEXT_PUBLIC_TMDB_API_KEY}&session_id=${sessionId}`,
+        `https://api.themoviedb.org/3/account/${accountId}/favorite?api_key=${appSettings.getTmdbApiKey()}&session_id=${sessionId}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

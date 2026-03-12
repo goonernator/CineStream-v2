@@ -71,9 +71,9 @@ export default function ProfileGuard({ children }: ProfileGuardProps) {
       }
     };
 
-    window.addEventListener('cinestream:profile-changed', handleProfileChange);
+    window.addEventListener('sanctiontv:profile-changed', handleProfileChange);
     return () => {
-      window.removeEventListener('cinestream:profile-changed', handleProfileChange);
+      window.removeEventListener('sanctiontv:profile-changed', handleProfileChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount

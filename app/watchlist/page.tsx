@@ -25,25 +25,14 @@ export default function WatchlistPage() {
 
   useEffect(() => {
     loadWatchlist();
-    
-    // Listen for watchlist updates from other components
+
     const handleWatchlistUpdated = () => {
       loadWatchlist();
     };
-    
-    // Listen for page visibility changes to refresh when returning to page
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadWatchlist();
-      }
-    };
-    
-    window.addEventListener('cinestream:watchlist-updated', handleWatchlistUpdated);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
+    window.addEventListener('sanctiontv:watchlist-updated', handleWatchlistUpdated);
     return () => {
-      window.removeEventListener('cinestream:watchlist-updated', handleWatchlistUpdated);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('sanctiontv:watchlist-updated', handleWatchlistUpdated);
     };
   }, []);
 

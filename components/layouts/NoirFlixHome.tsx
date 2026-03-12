@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { tmdb, TMDB_IMAGE_BASE } from '@/lib/tmdb';
 import { watchProgress } from '@/lib/watchProgress';
-import { notifications } from '@/lib/notifications';
 import { filterValidMedia } from '@/lib/mediaFilter';
 import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
@@ -39,7 +38,6 @@ export default function NoirFlixHome() {
   const [watchlistTotal, setWatchlistTotal] = useState(0);
   const [favoritesTotal, setFavoritesTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const notificationCooldownRef = useRef<number>(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -78,12 +76,6 @@ export default function NoirFlixHome() {
               
               const filteredDetails = filterValidMedia(uniqueDetails);
               setContinueWatching(filteredDetails);
-              
-              const now = Date.now();
-              if (filteredDetails.length > 0 && now - notificationCooldownRef.current > 5 * 60 * 1000) {
-                notificationCooldownRef.current = now;
-                notifications.checkContinueWatching(filteredDetails, tmdb);
-              }
 
               // Load recommendations and watchlist/favorites after continue watching is loaded
               try {

@@ -1,4 +1,4 @@
-// Notification system for CineStream
+// Notification system for SanctionTV
 
 import { profiles } from './profiles';
 import type { Movie, TVShow } from './types';
@@ -192,7 +192,7 @@ export const notifications = {
 
     // Dispatch event for real-time UI updates
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('cinestream:notification-added', {
+      window.dispatchEvent(new CustomEvent('sanctiontv:notification-added', {
         detail: newNotification
       }));
     }
@@ -209,7 +209,7 @@ export const notifications = {
     
     if (typeof window !== 'undefined') {
       localStorage.setItem(getStorageKey(), JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent('cinestream:notifications-updated'));
+      window.dispatchEvent(new CustomEvent('sanctiontv:notifications-updated'));
     }
   },
 
@@ -220,7 +220,7 @@ export const notifications = {
     
     if (typeof window !== 'undefined') {
       localStorage.setItem(getStorageKey(), JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent('cinestream:notifications-updated'));
+      window.dispatchEvent(new CustomEvent('sanctiontv:notifications-updated'));
     }
   },
 
@@ -231,7 +231,7 @@ export const notifications = {
     
     if (typeof window !== 'undefined') {
       localStorage.setItem(getStorageKey(), JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent('cinestream:notifications-updated'));
+      window.dispatchEvent(new CustomEvent('sanctiontv:notifications-updated'));
     }
   },
 
@@ -239,7 +239,7 @@ export const notifications = {
   clearAll(): void {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(getStorageKey());
-      window.dispatchEvent(new CustomEvent('cinestream:notifications-updated'));
+      window.dispatchEvent(new CustomEvent('sanctiontv:notifications-updated'));
     }
   },
 
@@ -251,7 +251,7 @@ export const notifications = {
     // Add welcome notifications
     this.add({
       type: 'recommendation',
-      title: 'Welcome to CineStream!',
+      title: 'Welcome to SanctionTV!',
       message: 'Explore thousands of movies and TV shows. Start by browsing the home page.',
     });
 

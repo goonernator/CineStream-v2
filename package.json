@@ -1,5 +1,5 @@
 {
-  "name": "Cinestream",
+  "name": "sanction-tv",
   "version": "2.0.0",
   "private": true,
   "main": "electron/main.js",
@@ -41,8 +41,8 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "com.cinestream.app",
-    "productName": "Cinestream",
+    "appId": "com.sanctiontv.app",
+    "productName": "SanctionTV",
     "directories": {
       "output": "dist"
     },

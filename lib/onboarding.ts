@@ -26,7 +26,7 @@ export interface TourStep {
 export const tourSteps: TourStep[] = [
   {
     id: 'welcome',
-    title: 'Welcome to CineStream! 🎬',
+    title: 'Welcome to SanctionTV! 🎬',
     description: 'Your personal streaming hub for movies and TV shows. Let\'s take a quick tour to help you get started.',
     target: '',
     position: 'center',
@@ -34,7 +34,7 @@ export const tourSteps: TourStep[] = [
   {
     id: 'app-name',
     title: 'App Name & Navigation',
-    description: 'The CineStream logo is always in the top-left corner. Click it to return home. The top navigation bar gives you quick access to all sections.',
+    description: 'The SanctionTV logo is always in the top-left corner. Click it to return home. The top navigation bar gives you quick access to all sections.',
     target: '[data-tour="app-name"]',
     position: 'bottom',
     highlightPadding: 8,
@@ -92,7 +92,7 @@ export const tourSteps: TourStep[] = [
   {
     id: 'settings',
     title: 'Personalize Your Experience',
-    description: 'Customize themes, playback settings, and subtitle preferences in Settings. Make CineStream your own!',
+    description: 'Customize themes, playback settings, and subtitle preferences in Settings. Make SanctionTV your own!',
     target: '[data-tour="settings"]',
     position: 'bottom',
   },

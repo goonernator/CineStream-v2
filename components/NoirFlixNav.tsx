@@ -59,18 +59,18 @@ export default function NoirFlixNav() {
       setAdultContentEnabled(e.detail.enabled);
     };
 
-    window.addEventListener('cinestream:open-search', handleOpenSearch);
-    window.addEventListener('cinestream:close-modal', handleCloseModal);
-    window.addEventListener('cinestream:profile-changed', handleProfileChange);
+    window.addEventListener('sanctiontv:open-search', handleOpenSearch);
+    window.addEventListener('sanctiontv:close-modal', handleCloseModal);
+    window.addEventListener('sanctiontv:profile-changed', handleProfileChange);
     window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('cinestream:adult-content-changed', handleAdultContentChange as EventListener);
+    window.addEventListener('sanctiontv:adult-content-changed', handleAdultContentChange as EventListener);
 
     return () => {
-      window.removeEventListener('cinestream:open-search', handleOpenSearch);
-      window.removeEventListener('cinestream:close-modal', handleCloseModal);
-      window.removeEventListener('cinestream:profile-changed', handleProfileChange);
+      window.removeEventListener('sanctiontv:open-search', handleOpenSearch);
+      window.removeEventListener('sanctiontv:close-modal', handleCloseModal);
+      window.removeEventListener('sanctiontv:profile-changed', handleProfileChange);
       window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('cinestream:adult-content-changed', handleAdultContentChange as EventListener);
+      window.removeEventListener('sanctiontv:adult-content-changed', handleAdultContentChange as EventListener);
     };
   }, []);
 
@@ -178,7 +178,7 @@ export default function NoirFlixNav() {
         <div className="flex items-center gap-4" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <div className="logo font-black text-lg tracking-[-2px] uppercase">
             <Link href="/" className="text-white hover:opacity-80 transition-opacity inline-block">
-              {pathname === '/anime' ? 'Animestream' : 'Cinestream'}
+              {pathname === '/anime' ? 'Anime' : 'Sanction'}
             </Link>
           </div>
 

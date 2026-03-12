@@ -50,12 +50,12 @@ export default function NotificationCenter({ isExpanded = false, position = 'top
 
     // Listen for updates
     const handleUpdate = () => loadNotifications();
-    window.addEventListener('cinestream:notifications-updated', handleUpdate);
-    window.addEventListener('cinestream:notification-added', handleUpdate);
+    window.addEventListener('sanctiontv:notifications-updated', handleUpdate);
+    window.addEventListener('sanctiontv:notification-added', handleUpdate);
 
     return () => {
-      window.removeEventListener('cinestream:notifications-updated', handleUpdate);
-      window.removeEventListener('cinestream:notification-added', handleUpdate);
+      window.removeEventListener('sanctiontv:notifications-updated', handleUpdate);
+      window.removeEventListener('sanctiontv:notification-added', handleUpdate);
     };
   }, []);
 

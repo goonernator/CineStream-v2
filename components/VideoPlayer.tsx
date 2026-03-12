@@ -27,6 +27,11 @@ interface VideoPlayerProps {
   hasNextEpisode?: boolean;
   onControlsVisibilityChange?: (visible: boolean) => void;
   pausedForStillWatching?: boolean;
+  rating?: number;
+  contentRating?: { label: string; reason: string } | null;
+  onEnterNextEpisodeWindow?: () => void;
+  mediaTitle?: string;
+  episodeTitle?: string;
 }
 
 // Subtitle preference key for localStorage
@@ -65,6 +70,11 @@ export default function VideoPlayer({
   hasNextEpisode = false,
   onControlsVisibilityChange,
   pausedForStillWatching = false,
+  rating,
+  contentRating,
+  onEnterNextEpisodeWindow,
+  mediaTitle,
+  episodeTitle,
 }: VideoPlayerProps) {
   const { layout } = useLayout();
   const isNoirFlix = layout === 'noirflix';
@@ -86,6 +96,7 @@ export default function VideoPlayer({
   const [isSourceStarting, setIsSourceStarting] = useState(true);
   const [startupElapsedSeconds, setStartupElapsedSeconds] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showQualitySubmenu, setShowQualitySubmenu] = useState(false);
   const [showSkipIntro, setShowSkipIntro] = useState(false);
   const [showCaptionMenu, setShowCaptionMenu] = useState(false);
   const [selectedCaptionIndex, setSelectedCaptionIndex] = useState<number>(-1); // -1 = off
@@ -93,10 +104,19 @@ export default function VideoPlayer({
   const [subtitleCues, setSubtitleCues] = useState<Array<{ start: number; end: number; text: string }>>([]);
   const [hdrSupported, setHdrSupported] = useState(false);
   const [isPlayingHDR, setIsPlayingHDR] = useState(false);
+  const [showRatingOverlay, setShowRatingOverlay] = useState(false);
+  const [ratingOverlayFadeIn, setRatingOverlayFadeIn] = useState(false);
+  const [ratingOverlayFadeOut, setRatingOverlayFadeOut] = useState(false);
+  const [nextEpisodeCountdown, setNextEpisodeCountdown] = useState<number | null>(null);
+  const ratingShownRef = useRef(false);
+  const ratingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const nextEpisodeIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const enteredNextEpisodeWindowRef = useRef(false);
   const hideControlsTimeout = useRef<NodeJS.Timeout | null>(null);
   const progressRestored = useRef(false);
   const lastSaveTime = useRef<number>(0);
   const onErrorRef = useRef(onError);
+  const onNextEpisodeRef = useRef(onNextEpisode);
   const hdrCheckRef = useRef<boolean>(false);
   const startupIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -108,6 +128,10 @@ export default function VideoPlayer({
   useEffect(() => {
     onErrorRef.current = onError;
   }, [onError]);
+
+  useEffect(() => {
+    onNextEpisodeRef.current = onNextEpisode;
+  }, [onNextEpisode]);
   
   useEffect(() => {
     mediaInfoRef.current = { mediaId, type, season, episode, title };
@@ -351,7 +375,43 @@ export default function VideoPlayer({
     setIsSourceStarting(true);
     setStartupElapsedSeconds(0);
     setBuffering(true);
+    ratingShownRef.current = false;
+    setShowRatingOverlay(false);
+    setRatingOverlayFadeIn(false);
+    setRatingOverlayFadeOut(false);
+    if (ratingTimeoutRef.current) {
+      clearTimeout(ratingTimeoutRef.current);
+      ratingTimeoutRef.current = null;
+    }
   }, [src]);
+
+  // Rating overlay: show when playback starts (content rating or score), visible 8s then fade out
+  useEffect(() => {
+    const hasContentRating = contentRating?.label?.trim();
+    const hasScore = rating != null && rating > 0;
+    if (!isPlaying || (!hasContentRating && !hasScore) || ratingShownRef.current) return;
+    ratingShownRef.current = true;
+    setRatingOverlayFadeOut(false);
+    setRatingOverlayFadeIn(false);
+    setShowRatingOverlay(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setRatingOverlayFadeIn(true));
+    });
+    ratingTimeoutRef.current = setTimeout(() => {
+      setRatingOverlayFadeOut(true);
+      ratingTimeoutRef.current = setTimeout(() => {
+        setShowRatingOverlay(false);
+        setRatingOverlayFadeOut(false);
+        ratingTimeoutRef.current = null;
+      }, 750);
+    }, 8000);
+    return () => {
+      if (ratingTimeoutRef.current) {
+        clearTimeout(ratingTimeoutRef.current);
+        ratingTimeoutRef.current = null;
+      }
+    };
+  }, [isPlaying, rating, contentRating]);
 
   useEffect(() => {
     if (!isSourceStarting) {
@@ -458,14 +518,17 @@ export default function VideoPlayer({
         }
         
         if (data.fatal) {
-          // Always log fatal errors with full details
-          const errorInfo: Record<string, unknown> = {};
+          // Build error details; ensure we always have something to log (HLS.js payload shape can vary)
+          const errorInfo: Record<string, unknown> = {
+            fatal: true,
+            src: src ?? '(no src)',
+          };
           if (data.type !== undefined) errorInfo.type = data.type;
           if (data.details !== undefined) errorInfo.details = data.details;
           if (data.response) {
             errorInfo.response = {
               code: data.response.code,
-              text: data.response.text?.substring(0, 500), // Increased limit
+              text: data.response.text?.substring(0, 500),
               url: data.response.url
             };
           }
@@ -478,9 +541,24 @@ export default function VideoPlayer({
           if (data.err) {
             errorInfo.err = data.err;
           }
-          errorInfo.src = src;
-          console.error('Fatal HLS error:', errorInfo);
-          logger.error('Fatal HLS error details:', errorInfo);
+          // Fallback: if we still have no useful fields, include safe keys from data (handles different HLS.js versions)
+          const hasDetails = Object.keys(errorInfo).length > 2;
+          if (!hasDetails && data && typeof data === 'object') {
+            try {
+              const safe: Record<string, unknown> = {};
+              for (const key of ['type', 'details', 'reason', 'context'] as const) {
+                if (key in data && (data as Record<string, unknown>)[key] !== undefined) {
+                  safe[key] = (data as Record<string, unknown>)[key];
+                }
+              }
+              if (Object.keys(safe).length > 0) {
+                Object.assign(errorInfo, safe);
+              }
+            } catch (_) {
+              // ignore
+            }
+          }
+          logger.error('Fatal HLS error', errorInfo);
           
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
@@ -589,8 +667,8 @@ export default function VideoPlayer({
       const time = video.currentTime;
       setCurrentTime(time);
       
-      // Show Skip Intro button between 5 and 90 seconds (typical intro length)
-      if (time >= 5 && time <= 90 && duration > 120) {
+      // Show Skip Intro button between 5 and 75 seconds (typical intro length)
+      if (time >= 5 && time <= 75 && duration > 120) {
         setShowSkipIntro(true);
       } else {
         setShowSkipIntro(false);
@@ -971,17 +1049,63 @@ export default function VideoPlayer({
 
   const handleSkipIntro = () => {
     if (videoRef.current) {
-      videoRef.current.currentTime = 120; // Skip to 2 minutes
+      videoRef.current.currentTime = 90; // Skip to 1.5 min (typical intro end)
       setShowSkipIntro(false);
     }
   };
 
-  // Show next episode button only in the last 2 minutes of the episode
+  // Next episode: show card in last 30s, 10s countdown then auto-next when autoNext is on
   const { autoNext } = getAutoplaySettings();
-  const LAST_TWO_MINUTES = 120; // 2 minutes in seconds
-  // If episode is shorter than 2 minutes, show button from the start
-  const isInLastTwoMinutes = duration > 0 && (duration <= LAST_TWO_MINUTES || currentTime >= (duration - LAST_TWO_MINUTES));
-  const showNextEpisode = hasNextEpisode && type === 'tv' && autoNext && duration > 0 && isInLastTwoMinutes;
+  const NEXT_EPISODE_WINDOW = 30; // seconds before end to show next episode card
+  const isInNextEpisodeWindow = duration > 0 && (duration <= NEXT_EPISODE_WINDOW || currentTime >= duration - NEXT_EPISODE_WINDOW);
+  const showNextEpisode = hasNextEpisode && type === 'tv' && duration > 0 && isInNextEpisodeWindow;
+
+  // Start/clear next episode countdown when entering/leaving the window; notify parent for "Still Watching"
+  useEffect(() => {
+    if (!showNextEpisode || !onNextEpisodeRef.current) {
+      if (nextEpisodeIntervalRef.current) {
+        clearInterval(nextEpisodeIntervalRef.current);
+        nextEpisodeIntervalRef.current = null;
+      }
+      setNextEpisodeCountdown(null);
+      enteredNextEpisodeWindowRef.current = false;
+      return;
+    }
+    if (!enteredNextEpisodeWindowRef.current) {
+      enteredNextEpisodeWindowRef.current = true;
+      onEnterNextEpisodeWindow?.();
+    }
+    if (autoNext) {
+      setNextEpisodeCountdown(10);
+      nextEpisodeIntervalRef.current = setInterval(() => {
+        setNextEpisodeCountdown((prev) => {
+          if (prev === null || prev <= 1) {
+            if (nextEpisodeIntervalRef.current) {
+              clearInterval(nextEpisodeIntervalRef.current);
+              nextEpisodeIntervalRef.current = null;
+            }
+            if (prev === 1) {
+              try {
+                onNextEpisodeRef.current?.();
+              } catch (e) {
+                logger.error('Auto next episode failed:', e);
+              }
+            }
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      setNextEpisodeCountdown(null);
+    }
+    return () => {
+      if (nextEpisodeIntervalRef.current) {
+        clearInterval(nextEpisodeIntervalRef.current);
+        nextEpisodeIntervalRef.current = null;
+      }
+    };
+  }, [showNextEpisode, autoNext]);
 
   // Handle caption selection changes
   const handleCaptionChange = (index: number) => {
@@ -1050,6 +1174,39 @@ export default function VideoPlayer({
         </div>
       )}
 
+      {/* Content rating overlay - left side, red bar + RATED label + reason; fades in then out after 8s */}
+      {showRatingOverlay && contentRating?.label?.trim() && (
+        <div
+          className={`absolute left-6 top-1/2 -translate-y-1/2 z-40 pointer-events-none transition-all duration-700 ease-out ${
+            !ratingOverlayFadeIn || ratingOverlayFadeOut
+              ? 'opacity-0 -translate-x-4'
+              : 'opacity-100 translate-x-0'
+          }`}
+          style={{ transitionProperty: 'opacity, transform' }}
+          aria-hidden
+        >
+          <div
+            className={`flex items-stretch rounded-lg overflow-hidden shadow-2xl ${
+              isNoirFlix
+                ? 'bg-[#0a0a0a]/95 border border-white/10 backdrop-blur-sm'
+                : 'bg-black/90 backdrop-blur-md ring-1 ring-white/10'
+            }`}
+          >
+            <div className="w-1.5 rounded-l-full bg-netflix-red shrink-0 min-h-[3rem]" aria-hidden />
+            <div className="pl-4 pr-5 py-2.5">
+              <div className="text-white font-bold text-xl uppercase tracking-wider drop-shadow-sm">
+                RATED {contentRating.label}
+              </div>
+              {contentRating.reason && (
+                <div className={`text-sm mt-1 font-medium ${isNoirFlix ? 'text-white/80' : 'text-white/90'}`}>
+                  {contentRating.reason.toLowerCase()}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Custom Subtitle Overlay */}
       {currentSubtitle && (
         <div className="absolute bottom-24 left-0 right-0 flex justify-center pointer-events-none z-20">
@@ -1096,6 +1253,11 @@ export default function VideoPlayer({
               e.preventDefault();
               e.stopPropagation();
               logger.debug('Next episode button clicked');
+              if (nextEpisodeIntervalRef.current) {
+                clearInterval(nextEpisodeIntervalRef.current);
+                nextEpisodeIntervalRef.current = null;
+              }
+              setNextEpisodeCountdown(null);
               if (onNextEpisode) {
                 try {
                   onNextEpisode();
@@ -1110,13 +1272,19 @@ export default function VideoPlayer({
             className={`bg-white/95 hover:bg-white text-black px-6 py-3 rounded-md flex items-center gap-2 transition-all duration-200 hover:scale-105 shadow-xl pointer-events-auto cursor-pointer ${
               isNoirFlix ? 'font-mono text-xs uppercase tracking-[2px]' : 'font-semibold text-lg'
             }`}
-            aria-label="Play next episode"
+            aria-label={nextEpisodeCountdown != null && nextEpisodeCountdown > 0 ? `Next episode in ${nextEpisodeCountdown} seconds` : 'Play next episode'}
             type="button"
           >
-            <span>Next Episode</span>
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
-            </svg>
+            {nextEpisodeCountdown != null && nextEpisodeCountdown > 0 ? (
+              <span className="tabular-nums">Next episode in {nextEpisodeCountdown}</span>
+            ) : (
+              <>
+                <span>Next Episode</span>
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+                </svg>
+              </>
+            )}
           </button>
         </div>
       )}
@@ -1142,17 +1310,6 @@ export default function VideoPlayer({
             : 'bg-gradient-to-t from-black/90 via-transparent to-black/50'
         }`}
       >
-        {/* Title Above Progress Bar */}
-        {title && (
-          <div className="absolute bottom-20 left-4 pointer-events-none">
-            <h2 className={`text-2xl font-bold drop-shadow-lg ${
-              isNoirFlix ? 'text-white font-black uppercase tracking-[-1px]' : 'text-white'
-            }`}>
-              {title}
-            </h2>
-          </div>
-        )}
-
         {/* Center Play Button - lower z-index so controls work */}
         {!isPlaying && !buffering && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
@@ -1206,11 +1363,11 @@ export default function VideoPlayer({
             />
           </div>
 
-          {/* Control Buttons */}
-          <div className={`flex items-center justify-between ${
+          {/* Control Buttons + media info inline */}
+          <div className={`flex items-center justify-between gap-3 ${
             isNoirFlix ? 'text-white' : 'text-white'
           }`}>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-4 shrink-0">
               {/* Play/Pause */}
               <button
                 onClick={(e) => {
@@ -1305,21 +1462,6 @@ export default function VideoPlayer({
                       isNoirFlix ? 'bg-[#1a1a1a]' : 'bg-gray-600'
                     }`}
                 />
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    cycleAudioBoost();
-                  }}
-                  className={`px-2 py-0.5 rounded text-xs font-semibold border transition-all duration-200 ${
-                    isNoirFlix
-                      ? 'border-white/20 text-white/90 hover:bg-white hover:text-black'
-                      : 'border-white/20 text-white/90 hover:bg-white/10'
-                  }`}
-                  title={`Audio boost ${audioBoost}x`}
-                  aria-label={`Audio boost ${audioBoost}x`}
-                >
-                  {audioBoost}x
-                </button>
               </div>
 
               {/* Time */}
@@ -1345,7 +1487,28 @@ export default function VideoPlayer({
               )}
             </div>
 
-            <div className="flex items-center space-x-4">
+            {/* Media info - center of bar, single line */}
+            {(mediaTitle || episodeTitle || (type === 'tv' && season != null && episode != null)) && (
+              <div className={`flex items-center justify-center gap-1.5 text-center pointer-events-none text-sm truncate min-w-0 flex-1 px-2 ${
+                isNoirFlix ? 'text-white font-medium' : 'text-white/95'
+              }`}>
+                {mediaTitle && <span>{mediaTitle}</span>}
+                {type === 'tv' && (season != null && episode != null) && (
+                  <>
+                    {mediaTitle && <span aria-hidden> · </span>}
+                    <span className="tabular-nums shrink-0">S{season} E{episode}</span>
+                  </>
+                )}
+                {type === 'tv' && episodeTitle && (
+                  <>
+                    {(mediaTitle || (season != null && episode != null)) && <span aria-hidden> · </span>}
+                    <span className="truncate">{episodeTitle}</span>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center space-x-4 shrink-0">
               {/* Subtitles/CC Button */}
               {captions.length > 0 && (
                 <div className="relative">
@@ -1445,26 +1608,98 @@ export default function VideoPlayer({
                 </div>
               )}
 
-              {/* Source Selection Menu */}
-              {sources.length > 1 && (() => {
-                // Normalize provider names - map 'rivestream' to 'flowcast' for display
-                const normalizedProviders = sources.map(s => {
-                  const provider = s.provider || 'unknown';
-                  return provider === 'rivestream' ? 'flowcast' : provider;
-                });
-                const providers = Array.from(new Set(normalizedProviders));
-                
-                return (
-                  <SourceProviderMenu
-                    providers={providers}
-                    sources={sources}
-                    providerHealth={providerHealth}
-                    currentSourceIndex={currentSourceIndex}
-                    onSourceChange={onSourceChange}
-                    isNoirFlix={isNoirFlix}
-                  />
-                );
-              })()}
+              {/* Settings (cog) */}
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowSettings(!showSettings);
+                    setShowCaptionMenu(false);
+                    if (!showSettings) setShowQualitySubmenu(false);
+                  }}
+                  className="hover:text-netflix-red transition-all duration-200 hover:scale-110 hover:shadow-lg"
+                  title="Settings"
+                  aria-label="Settings"
+                  aria-expanded={showSettings}
+                >
+                  <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.04.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                  </svg>
+                </button>
+
+                {showSettings && (
+                  <div
+                    className={`absolute bottom-full right-0 mb-2 flex flex-row-reverse shadow-2xl z-50 overflow-visible ${
+                      isNoirFlix ? 'bg-[#0a0a0a] border border-[#1a1a1a]' : 'bg-black/95 ring-1 ring-white/10'
+                    } rounded-lg min-w-[200px]`}
+                    onMouseLeave={() => {
+                      setShowQualitySubmenu(false);
+                    }}
+                  >
+                    {/* Quality submenu - opens to the left (first in flex due to flex-row-reverse) */}
+                    {showQualitySubmenu && sources.length > 0 && (
+                      <div
+                        className={`min-w-[200px] max-h-[70vh] overflow-y-auto py-1 rounded-l-lg border-r ${
+                          isNoirFlix ? 'bg-[#0a0a0a] border-[#1a1a1a]' : 'bg-black/95 ring-1 ring-white/10 border-gray-700'
+                        }`}
+                        onMouseEnter={() => setShowQualitySubmenu(true)}
+                        onMouseLeave={() => setShowQualitySubmenu(false)}
+                      >
+                        <SettingsQualitySubmenu
+                          sources={sources}
+                          providerHealth={providerHealth}
+                          currentSourceIndex={currentSourceIndex}
+                          onSourceChange={onSourceChange}
+                          isNoirFlix={isNoirFlix}
+                          onSelect={() => setShowQualitySubmenu(false)}
+                        />
+                      </div>
+                    )}
+                    {/* Main settings list */}
+                    <div className={`py-1 min-w-[200px] rounded-lg overflow-hidden ${isNoirFlix ? '' : 'border-l border-gray-700'}`}>
+                      <div className={`px-4 py-2 border-b ${isNoirFlix ? 'border-[#1a1a1a]' : 'border-gray-700'}`}>
+                        <div className={`text-sm font-semibold ${isNoirFlix ? 'text-white font-mono uppercase text-xs tracking-[1px]' : 'text-white'}`}>Settings</div>
+                      </div>
+                      {/* Quality - row with arrow to open submenu (show even with one source so user sees current quality) */}
+                      {sources.length > 0 && (
+                        <div
+                          onMouseEnter={() => setShowQualitySubmenu(true)}
+                          onMouseLeave={() => setShowQualitySubmenu(false)}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowQualitySubmenu((v) => !v);
+                            }}
+                            className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
+                              isNoirFlix ? 'text-[#ccc] hover:bg-[rgba(255,255,255,0.06)]' : 'text-gray-300 hover:bg-gray-800'
+                            }`}
+                          >
+                            <span>Quality</span>
+                            <svg className={`w-4 h-4 transition-transform ${showQualitySubmenu ? '-rotate-90' : ''}`} viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                      {/* Audio boost - click to cycle 1x -> 1.5x -> 2x */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          cycleAudioBoost();
+                        }}
+                        className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
+                          isNoirFlix ? 'text-[#ccc] hover:bg-[rgba(255,255,255,0.06)]' : 'text-gray-300 hover:bg-gray-800'
+                        }`}
+                        title="Click to cycle: 1x → 1.5x → 2x"
+                      >
+                        <span>Audio boost</span>
+                        <span className={`tabular-nums font-medium ${isNoirFlix ? 'text-white' : 'text-white'}`}>{audioBoost}x</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Fullscreen */}
               <button
@@ -1488,6 +1723,100 @@ export default function VideoPlayer({
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Settings quality submenu (used inside Settings cog menu)
+function SettingsQualitySubmenu({
+  sources,
+  providerHealth,
+  currentSourceIndex,
+  onSourceChange,
+  isNoirFlix,
+  onSelect,
+}: {
+  sources: Array<{ url: string; quality: string; provider?: string }>;
+  providerHealth: Record<string, 'checking' | 'ok' | 'failed'>;
+  currentSourceIndex: number;
+  onSourceChange?: (index: number) => void;
+  isNoirFlix: boolean;
+  onSelect: () => void;
+}) {
+  const parseQualityRank = (quality?: string | number): number => {
+    if (!quality) return -1;
+    const q = String(quality).toLowerCase();
+    if (q === 'auto') return 0;
+    if (q === '4k') return 2160;
+    const match = q.match(/(\d{3,4})p/);
+    if (match) return parseInt(match[1], 10);
+    const num = q.match(/(\d{3,4})/);
+    return num ? parseInt(num[1], 10) : -1;
+  };
+  const hasSpecificQuality = (quality?: string | number): boolean => {
+    if (!quality) return false;
+    const q = String(quality).trim().toLowerCase();
+    return q !== '' && q !== 'unknown' && q !== 'auto';
+  };
+  const getProviderLabel = (provider?: string) => {
+    const p = provider || 'unknown';
+    if (p === 'sanction') return 'Sanction';
+    if (p === 'flowcast' || p === 'rivestream') return 'Flowcast';
+    if (p === 'hindicast') return 'HindiCast';
+    if (p === 'vidlink') return 'VidLink';
+    return p.charAt(0).toUpperCase() + p.slice(1);
+  };
+
+  const sortedSources = sources
+    .map((s, index) => ({ ...s, originalIndex: index }))
+    .sort((a, b) => {
+      const providerA = (a.provider || 'unknown') === 'rivestream' ? 'flowcast' : (a.provider || 'unknown');
+      const providerB = (b.provider || 'unknown') === 'rivestream' ? 'flowcast' : (b.provider || 'unknown');
+      if (providerA !== providerB) return providerA.localeCompare(providerB);
+      return parseQualityRank(b.quality) - parseQualityRank(a.quality);
+    });
+
+  return (
+    <div className="py-1">
+      <div className={`px-3 py-2 border-b ${isNoirFlix ? 'border-[#1a1a1a]' : 'border-gray-700'}`}>
+        <div className={`text-xs font-semibold ${isNoirFlix ? 'text-white font-mono uppercase tracking-[1px]' : 'text-white'}`}>Quality</div>
+      </div>
+      <div className="max-h-60 overflow-y-auto">
+        {sortedSources.map((source) => {
+          const provider = (source.provider || 'unknown') === 'rivestream' ? 'flowcast' : (source.provider || 'unknown');
+          const health = providerHealth[provider] || 'checking';
+          const isCurrent = source.originalIndex === currentSourceIndex;
+          const isFailed = health === 'failed' && !isCurrent;
+          const label = hasSpecificQuality(source.quality) ? source.quality : 'Auto';
+          const providerLabel = getProviderLabel(source.provider);
+          return (
+            <button
+              key={source.originalIndex}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isFailed) return;
+                onSourceChange?.(source.originalIndex);
+                onSelect();
+              }}
+              disabled={isFailed}
+              className={`w-full px-3 py-2 text-left text-sm transition-colors flex items-center justify-between ${
+                isFailed
+                  ? isNoirFlix ? 'text-white/35 cursor-not-allowed' : 'text-gray-500 cursor-not-allowed'
+                  : isCurrent
+                    ? isNoirFlix ? 'bg-white text-[#050505]' : 'bg-netflix-red text-white'
+                    : isNoirFlix ? 'text-[#888] hover:bg-[rgba(255,255,255,0.06)]' : 'text-gray-300 hover:bg-gray-800'
+              }`}
+            >
+              <span>{providerLabel} · {label}</span>
+              {isCurrent && (
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

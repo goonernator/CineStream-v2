@@ -78,12 +78,9 @@ A modern Netflix-style desktop streaming application built with Electron and Nex
    npm install
    ```
 
-3. **Configure environment variables**
+3. **Configure API keys and URLs**
    
-   Create a `.env.local` file in the root directory:
-   ```env
-   NEXT_PUBLIC_TMDB_API_KEY=your_tmdb_api_key_here
-   ```
+   Open **Settings** in the app and go to **API & Services**. Enter your TMDB API key and Streaming API base URL (e.g. TLO V3). No `.env` file is required; all values are stored in the app.
 
 4. **Run in development mode**
    ```bash

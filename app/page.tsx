@@ -1,14 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useLayout } from '@/components/LayoutProvider';
 import Carousel from '@/components/Carousel';
 import Hero from '@/components/Hero';
 import CarouselSkeleton, { HomePageSkeleton } from '@/components/CarouselSkeleton';
 import NoirFlixHome from '@/components/layouts/NoirFlixHome';
 import { tmdb } from '@/lib/tmdb';
-import { watchProgress } from '@/lib/watchProgress';
-import { notifications } from '@/lib/notifications';
+import { watchProgress, type WatchProgress } from '@/lib/watchProgress';
 import { filterValidMedia } from '@/lib/mediaFilter';
 import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
@@ -34,18 +33,13 @@ export default function Home() {
   const [nowPlayingMovies, setNowPlayingMovies] = useState<Movie[]>([]);
   const [onTheAirTV, setOnTheAirTV] = useState<TVShow[]>([]);
   const [continueWatching, setContinueWatching] = useState<(Movie | TVShow)[]>([]);
+  const [continueWatchingProgress, setContinueWatchingProgress] = useState<Map<number, WatchProgress>>(new Map());
   const [continueWatchingLoading, setContinueWatchingLoading] = useState(true);
   const [trendingToday, setTrendingToday] = useState<(Movie | TVShow)[]>([]);
   const [upcomingMovies, setUpcomingMovies] = useState<Movie[]>([]);
   const [recommendations, setRecommendations] = useState<(Movie | TVShow)[]>([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
-  
-  // Track previous state for notifications
-  const prevRecommendationsCountRef = useRef(0);
-  const prevTrendingIdsRef = useRef<Set<number>>(new Set());
-  const prevLatestReleaseIdsRef = useRef<Set<number>>(new Set());
-  const notificationCooldownRef = useRef<number>(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -74,34 +68,30 @@ export default function Home() {
               
               const details = await Promise.all(detailsPromises);
               const validDetails = details.filter((detail): detail is Movie | TVShow => detail !== null);
-              
-              // Deduplicate by ID (same TV show can have multiple episodes in continue watching)
+
+              // Deduplicate by ID, keeping first (most recent) per ID and a progress map for correct resume
               const seenIds = new Set<number>();
-              const uniqueDetails = validDetails.filter((detail) => {
-                if (seenIds.has(detail.id)) {
-                  return false;
-                }
+              const uniqueDetails: (Movie | TVShow)[] = [];
+              const progressById = new Map<number, WatchProgress>();
+              for (let i = 0; i < validDetails.length; i++) {
+                const detail = validDetails[i];
+                if (seenIds.has(detail.id)) continue;
                 seenIds.add(detail.id);
-                return true;
-              });
-              
-              // Filter out items without thumbnails or ratings
+                uniqueDetails.push(detail);
+                progressById.set(detail.id, continueItems[i]);
+              }
+
               const filteredDetails = filterValidMedia(uniqueDetails);
               setContinueWatching(filteredDetails);
-              
-              // Check for continue watching notifications (includes new episode checking)
-              // Only check if enough time has passed since last check (cooldown)
-              const now = Date.now();
-              if (filteredDetails.length > 0 && now - notificationCooldownRef.current > 5 * 60 * 1000) {
-                notificationCooldownRef.current = now;
-                notifications.checkContinueWatching(filteredDetails, tmdb);
-              }
+              setContinueWatchingProgress(progressById);
             } else {
               setContinueWatching([]);
+              setContinueWatchingProgress(new Map());
             }
           } catch (error) {
             console.error('Failed to load continue watching:', error);
             setContinueWatching([]);
+            setContinueWatchingProgress(new Map());
           } finally {
             setContinueWatchingLoading(false);
           }
@@ -131,22 +121,6 @@ export default function Home() {
         setOnTheAirTV(shuffleArray(filterValidMedia(onTheAir)));
         setTrendingToday(shuffleArray(filterValidMedia(trending)));
         setUpcomingMovies(shuffleArray(filterValidMedia(upcoming)));
-        
-            // Check for trending updates (only if we have previous state to compare)
-            if (trending.length > 0 && prevTrendingIdsRef.current.size > 0) {
-              prevTrendingIdsRef.current = notifications.checkTrendingUpdates(trending, prevTrendingIdsRef.current);
-            } else if (trending.length > 0) {
-              // Initialize previous state without sending notification
-              prevTrendingIdsRef.current = new Set(trending.map(item => item.id));
-            }
-            
-            // Check for what's new (latest releases) (only if we have previous state to compare)
-            if (latest.length > 0 && prevLatestReleaseIdsRef.current.size > 0) {
-              prevLatestReleaseIdsRef.current = notifications.checkWhatsNew(latest, prevLatestReleaseIdsRef.current);
-            } else if (latest.length > 0) {
-              // Initialize previous state without sending notification
-              prevLatestReleaseIdsRef.current = new Set(latest.map(item => item.id));
-            }
       } catch (error) {
         logger.error('Failed to load data:', error);
       } finally {
@@ -227,12 +201,6 @@ export default function Home() {
         });
         
         setRecommendations(filterValidMedia(personalizedRecs));
-        
-        // Check for new recommendations
-        if (personalizedRecs.length > prevRecommendationsCountRef.current && prevRecommendationsCountRef.current > 0) {
-          notifications.checkNewRecommendations(personalizedRecs, prevRecommendationsCountRef.current);
-        }
-        prevRecommendationsCountRef.current = personalizedRecs.length;
       } catch (error) {
         logger.error('Failed to load recommendations:', error);
         setRecommendations([]);
@@ -271,7 +239,7 @@ export default function Home() {
         </div>
       ) : continueWatching.length > 0 ? (
         <div className="px-4 sm:px-6 lg:px-8 mb-8" data-tour="continue-watching">
-          <Carousel title="Continue Watching" items={continueWatching} id="continue-watching" />
+          <Carousel title="Continue Watching" items={continueWatching} id="continue-watching" resumeProgressMap={continueWatchingProgress} />
         </div>
       ) : null}
 

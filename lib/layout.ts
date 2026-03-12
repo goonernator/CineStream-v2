@@ -14,7 +14,7 @@ export interface LayoutConfig {
 export const layouts: Record<LayoutStyle, LayoutConfig> = {
   classic: {
     name: 'classic',
-    label: 'Cinestream (Classic)',
+    label: 'SanctionTV (Classic)',
     description: 'Traditional Netflix-style layout with horizontal carousels',
     style: 'classic',
   },

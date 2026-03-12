@@ -25,25 +25,14 @@ export default function FavoritesPage() {
 
   useEffect(() => {
     loadFavorites();
-    
-    // Listen for favorites updates from other components
+
     const handleFavoritesUpdated = () => {
       loadFavorites();
     };
-    
-    // Listen for page visibility changes to refresh when returning to page
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadFavorites();
-      }
-    };
-    
-    window.addEventListener('cinestream:favorites-updated', handleFavoritesUpdated);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
+    window.addEventListener('sanctiontv:favorites-updated', handleFavoritesUpdated);
     return () => {
-      window.removeEventListener('cinestream:favorites-updated', handleFavoritesUpdated);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('sanctiontv:favorites-updated', handleFavoritesUpdated);
     };
   }, []);
 

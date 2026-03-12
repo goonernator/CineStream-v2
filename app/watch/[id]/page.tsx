@@ -30,6 +30,8 @@ export default function WatchPage() {
   const [showStillWatching, setShowStillWatching] = useState(false);
   const [isPausedForStillWatching, setIsPausedForStillWatching] = useState(false);
   const [currentEpisodeName, setCurrentEpisodeName] = useState<string>('');
+  const [rating, setRating] = useState<number | null>(null);
+  const [contentRating, setContentRating] = useState<{ label: string; reason: string } | null>(null);
 
   const id = parseInt(params.id as string);
   const type = searchParams.get('type') as 'movie' | 'tv' | null;
@@ -72,13 +74,21 @@ export default function WatchPage() {
   const handleStillWatchingContinue = useCallback(() => {
     setShowStillWatching(false);
     setIsPausedForStillWatching(false);
-  }, []);
+    handleNextEpisode();
+  }, [handleNextEpisode]);
 
   const handleStillWatchingStay = useCallback(() => {
-    // Keep modal open and video paused
-    setShowStillWatching(true);
-    setIsPausedForStillWatching(true);
+    setShowStillWatching(false);
+    setIsPausedForStillWatching(false);
   }, []);
+
+  const handleEnterNextEpisodeWindow = useCallback(() => {
+    if (type !== 'tv') return;
+    if (watchProgress.getConsecutiveEpisodeCount(id) === 4) {
+      setShowStillWatching(true);
+      setIsPausedForStillWatching(true);
+    }
+  }, [type, id]);
 
   useEffect(() => {
     // Use a flag to prevent state updates after unmount (handles StrictMode double-invocation)
@@ -152,6 +162,17 @@ export default function WatchPage() {
           setCaptions(result.captions);
           setHasNextEpisode(false);
           setCurrentEpisodeName('');
+          setRating(movie.vote_average > 0 ? movie.vote_average : null);
+          const releaseDates = await tmdb.getMovieReleaseDates(id);
+          if (isCancelled || !isStillCurrentRequest(id, 'movie', 1, 1)) return;
+          if (releaseDates?.certification) {
+            setContentRating({
+              label: releaseDates.certification,
+              reason: releaseDates.reason || '',
+            });
+          } else {
+            setContentRating(null);
+          }
         } else {
           const tv = await tmdb.getTVDetails(id);
           if (isCancelled || !isStillCurrentRequest(id, 'tv', season, episode)) return;
@@ -175,34 +196,38 @@ export default function WatchPage() {
           if (isCancelled || !isStillCurrentRequest(id, 'tv', season, episode)) return;
           const currentEpisode = seasonDetails.episodes?.find((ep: any) => ep?.episode_number === episode);
           setCurrentEpisodeName(typeof currentEpisode?.name === 'string' ? currentEpisode.name : '');
+          const episodeRating = currentEpisode?.vote_average;
+          setRating(typeof episodeRating === 'number' && episodeRating > 0 ? episodeRating : (tv.vote_average > 0 ? tv.vote_average : null));
+          const contentRatings = await tmdb.getTVContentRatings(id);
+          if (isCancelled || !isStillCurrentRequest(id, 'tv', season, episode)) return;
+          if (contentRatings?.certification) {
+            setContentRating({
+              label: contentRatings.certification,
+              reason: contentRatings.reason || '',
+            });
+          } else {
+            setContentRating(null);
+          }
 
           const hasMoreEpisodesInSeason = seasonDetails.episodes && episode < seasonDetails.episodes.length;
           const hasNextSeason = season < (tv.number_of_seasons || 0);
           setHasNextEpisode(hasMoreEpisodesInSeason || hasNextSeason);
 
-          // Check for "Still Watching" modal (TV shows only)
+          // Consecutive episode count for "Still Watching" (modal shown at end of 4th via onEnterNextEpisodeWindow)
           const episodeId = `s${season}e${episode}`;
-          const consecutiveCount = watchProgress.incrementConsecutiveEpisodeCount(id, episodeId);
-
-          // If this is the 5th consecutive episode (after watching 4), show modal
-          if (consecutiveCount === 4) { // Show at start of 5th episode
-            setShowStillWatching(true);
-            setIsPausedForStillWatching(true);
-          } else {
-            // Reset if switching to different show (check stored showId)
-            try {
-              const storedData = localStorage.getItem(watchProgress.getConsecutiveEpisodeKey(id));
-              if (storedData) {
-                const data = JSON.parse(storedData);
-                if (data && data.showId !== id) {
-                  watchProgress.resetConsecutiveEpisodeCount(id);
-                }
+          watchProgress.incrementConsecutiveEpisodeCount(id, episodeId);
+          // Reset if switching to different show (check stored showId)
+          try {
+            const storedData = localStorage.getItem(watchProgress.getConsecutiveEpisodeKey(id));
+            if (storedData) {
+              const data = JSON.parse(storedData);
+              if (data && data.showId !== id) {
+                watchProgress.resetConsecutiveEpisodeCount(id);
               }
-            } catch (error) {
-              logger.error('Failed to check consecutive episode data:', error);
-              // If data is corrupted, reset the count
-              watchProgress.resetConsecutiveEpisodeCount(id);
             }
+          } catch (error) {
+            logger.error('Failed to check consecutive episode data:', error);
+            watchProgress.resetConsecutiveEpisodeCount(id);
           }
         }
       } catch (error) {
@@ -335,6 +360,11 @@ export default function WatchPage() {
             onNextEpisode={handleNextEpisode}
             onControlsVisibilityChange={handleControlsVisibilityChange}
             pausedForStillWatching={isPausedForStillWatching}
+            rating={rating ?? undefined}
+            contentRating={contentRating}
+            onEnterNextEpisodeWindow={handleEnterNextEpisodeWindow}
+            mediaTitle={title}
+            episodeTitle={type === 'tv' ? currentEpisodeName : undefined}
           />
         </ErrorBoundary>
         {/* Back Button - fades with controls */}

@@ -18,6 +18,8 @@ interface MediaCardProps {
   showQuickActions?: boolean;
   size?: 'default' | 'small' | 'large';
   className?: string;
+  /** When set (e.g. from Continue Watching carousel), used for play URL so the correct episode loads immediately. */
+  progressOverride?: WatchProgress | null;
 }
 
 // Star rating icon
@@ -50,12 +52,13 @@ const getRatingColor = (rating: number) => {
   return 'bg-red-500';
 };
 
-export default function MediaCard({ 
-  item, 
-  showBadges = true, 
+export default function MediaCard({
+  item,
+  showBadges = true,
   showQuickActions = true,
   size = 'default',
-  className = ''
+  className = '',
+  progressOverride,
 }: MediaCardProps) {
   const router = useRouter();
   const toast = useToast();
@@ -124,7 +127,8 @@ export default function MediaCard({
     loadStatus();
   }, [isFlipped, item.id, isMovie]);
 
-  const hasProgress = progress && progress.progress > 0 && progress.progress < 90;
+  const effectiveProgress = progressOverride ?? progress;
+  const hasProgress = effectiveProgress && effectiveProgress.progress > 0 && effectiveProgress.progress < 90;
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (cardRef.current && !isFlipped) {
@@ -140,11 +144,11 @@ export default function MediaCard({
 
   const handlePlayClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (hasProgress && progress) {
-      if (progress.type === 'tv' && progress.season && progress.episode) {
-        router.push(`/watch/${item.id}?type=tv&season=${progress.season}&episode=${progress.episode}`);
+    if (hasProgress && effectiveProgress) {
+      if (effectiveProgress.type === 'tv' && effectiveProgress.season != null && effectiveProgress.episode != null) {
+        router.push(`/watch/${item.id}?type=tv&season=${effectiveProgress.season}&episode=${effectiveProgress.episode}`);
       } else {
-        router.push(`/watch/${item.id}?type=${isMovie ? 'movie' : 'tv'}`);
+        router.push(`/watch/${item.id}?type=${effectiveProgress.type === 'movie' ? 'movie' : 'tv'}`);
       }
     } else {
       router.push(`/watch/${item.id}?type=${isMovie ? 'movie' : 'tv'}`);
@@ -357,11 +361,11 @@ export default function MediaCard({
           )}
           
           {/* Progress bar for continue watching */}
-          {hasProgress && progress && (
+          {hasProgress && effectiveProgress && (
             <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
               <div 
                 className="h-full bg-netflix-red transition-all"
-                style={{ width: `${progress.progress}%` }}
+                style={{ width: `${effectiveProgress.progress}%` }}
               />
             </div>
           )}

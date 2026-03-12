@@ -19,9 +19,14 @@ interface StreamPlayerProps {
   onNextEpisode?: () => void;
   onControlsVisibilityChange?: (visible: boolean) => void;
   pausedForStillWatching?: boolean;
+  rating?: number;
+  contentRating?: { label: string; reason: string } | null;
+  onEnterNextEpisodeWindow?: () => void;
+  mediaTitle?: string;
+  episodeTitle?: string;
 }
 
-function StreamPlayer({ sources, captions = [], type = 'movie', title, discordTitle, discordEpisodeName, mediaId, season, episode, hasNextEpisode, onNextEpisode, onControlsVisibilityChange, pausedForStillWatching = false }: StreamPlayerProps) {
+function StreamPlayer({ sources, captions = [], type = 'movie', title, discordTitle, discordEpisodeName, mediaId, season, episode, hasNextEpisode, onNextEpisode, onControlsVisibilityChange, pausedForStillWatching = false, rating, contentRating, onEnterNextEpisodeWindow, mediaTitle, episodeTitle }: StreamPlayerProps) {
   const [currentSourceIndex, setCurrentSourceIndex] = useState(0);
   const [hasError, setHasError] = useState(false);
   const [providerHealth, setProviderHealth] = useState<Record<string, 'checking' | 'ok' | 'failed'>>({});
@@ -42,6 +47,22 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, discordTi
     const isLocalProxyUrl = source.url.startsWith('/api/proxy-hls?url=');
     if (!isRiveProvider || !isLocalProxyUrl) return;
 
+    const isValhallaBackedSource = (() => {
+      try {
+        return decodeURIComponent(source.url).includes('valhallastream');
+      } catch {
+        return source.url.includes('valhallastream');
+      }
+    })();
+
+    if (isValhallaBackedSource) {
+      logger.debug('StreamPlayer: Skipping warm-up for Valhalla-backed source', {
+        provider: source.provider,
+        quality: source.quality,
+      });
+      return;
+    }
+
     if (warmedSourceUrlsRef.current.has(source.url)) return;
     warmedSourceUrlsRef.current.add(source.url);
 
@@ -50,7 +71,6 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, discordTi
 
     fetch(source.url, {
       method: 'GET',
-      headers: { Range: 'bytes=0-1023' },
       cache: 'no-store',
       signal: controller.signal,
     })
@@ -269,6 +289,11 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, discordTi
         onNextEpisode={onNextEpisode}
         onControlsVisibilityChange={onControlsVisibilityChange}
         pausedForStillWatching={pausedForStillWatching}
+        rating={rating}
+        contentRating={contentRating}
+        onEnterNextEpisodeWindow={onEnterNextEpisodeWindow}
+        mediaTitle={mediaTitle}
+        episodeTitle={episodeTitle}
       />
     </div>
   );
