@@ -26,10 +26,13 @@ export default function WatchPage() {
   const [loading, setLoading] = useState(true);
   const [hasNextEpisode, setHasNextEpisode] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const hideControlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showStillWatching, setShowStillWatching] = useState(false);
   const [isPausedForStillWatching, setIsPausedForStillWatching] = useState(false);
   const [currentEpisodeName, setCurrentEpisodeName] = useState<string>('');
+  const [currentEpisodeOverview, setCurrentEpisodeOverview] = useState<string>('');
   const [rating, setRating] = useState<number | null>(null);
   const [contentRating, setContentRating] = useState<{ label: string; reason: string } | null>(null);
 
@@ -41,11 +44,33 @@ export default function WatchPage() {
   // Ref to track which watch request is current (avoids applying stale load when user navigates quickly)
   const requestedRef = useRef<{ id: number; type: string | null; season: number; episode: number }>({ id: 0, type: null, season: 1, episode: 1 });
 
-  // All hooks must be called before any conditional returns
-  // Use useCallback with stable reference to prevent VideoPlayer remounting
-  const handleControlsVisibilityChange = useCallback((visible: boolean) => {
-    setShowControls(visible);
-  }, []); // Empty deps - callback never changes
+  // Control visibility from wrapper (player + back button) so back button stays visible when hovered
+  const handlePlaybackStateChange = useCallback((playing: boolean) => {
+    setIsPlaying(playing);
+    if (!playing) setShowControls(true);
+  }, []);
+  const handleWrapperMouseMove = useCallback(() => {
+    setShowControls(true);
+    if (hideControlsTimeoutRef.current) {
+      clearTimeout(hideControlsTimeoutRef.current);
+      hideControlsTimeoutRef.current = null;
+    }
+    if (isPlaying) {
+      hideControlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
+    }
+  }, [isPlaying]);
+  const handleWrapperMouseLeave = useCallback(() => {
+    if (!isPlaying) return;
+    if (hideControlsTimeoutRef.current) {
+      clearTimeout(hideControlsTimeoutRef.current);
+    }
+    hideControlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
+  }, [isPlaying]);
+  useEffect(() => {
+    return () => {
+      if (hideControlsTimeoutRef.current) clearTimeout(hideControlsTimeoutRef.current);
+    };
+  }, []);
 
   const handleNextEpisode = useCallback(async () => {
     if (type !== 'tv' || !mediaItem) return;
@@ -162,6 +187,7 @@ export default function WatchPage() {
           setCaptions(result.captions);
           setHasNextEpisode(false);
           setCurrentEpisodeName('');
+          setCurrentEpisodeOverview('');
           setRating(movie.vote_average > 0 ? movie.vote_average : null);
           const releaseDates = await tmdb.getMovieReleaseDates(id);
           if (isCancelled || !isStillCurrentRequest(id, 'movie', 1, 1)) return;
@@ -196,6 +222,7 @@ export default function WatchPage() {
           if (isCancelled || !isStillCurrentRequest(id, 'tv', season, episode)) return;
           const currentEpisode = seasonDetails.episodes?.find((ep: any) => ep?.episode_number === episode);
           setCurrentEpisodeName(typeof currentEpisode?.name === 'string' ? currentEpisode.name : '');
+          setCurrentEpisodeOverview(typeof currentEpisode?.overview === 'string' && currentEpisode.overview.trim() ? currentEpisode.overview : '');
           const episodeRating = currentEpisode?.vote_average;
           setRating(typeof episodeRating === 'number' && episodeRating > 0 ? episodeRating : (tv.vote_average > 0 ? tv.vote_average : null));
           const contentRatings = await tmdb.getTVContentRatings(id);
@@ -324,7 +351,12 @@ export default function WatchPage() {
 
   return (
     <div className="min-h-screen bg-netflix-dark">
-      <div className="relative w-full" style={{ height: 'calc(100vh)' }}>
+      <div
+        className="relative w-full"
+        style={{ height: 'calc(100vh)' }}
+        onMouseMove={handleWrapperMouseMove}
+        onMouseLeave={handleWrapperMouseLeave}
+      >
         <ErrorBoundary
           fallback={
             <div className="min-h-screen bg-netflix-dark flex items-center justify-center">
@@ -358,22 +390,32 @@ export default function WatchPage() {
             episode={type === 'tv' ? episode : undefined}
             hasNextEpisode={hasNextEpisode}
             onNextEpisode={handleNextEpisode}
-            onControlsVisibilityChange={handleControlsVisibilityChange}
+            onControlsVisibilityChange={() => {}}
             pausedForStillWatching={isPausedForStillWatching}
             rating={rating ?? undefined}
             contentRating={contentRating}
             onEnterNextEpisodeWindow={handleEnterNextEpisodeWindow}
             mediaTitle={title}
             episodeTitle={type === 'tv' ? currentEpisodeName : undefined}
+            mediaOverview={type === 'tv' ? (currentEpisodeOverview || mediaItem?.overview || '') : (mediaItem && 'overview' in mediaItem ? mediaItem.overview : '')}
+            releaseYear={mediaItem
+              ? ('release_date' in mediaItem && mediaItem.release_date
+                  ? new Date(mediaItem.release_date).getFullYear()
+                  : 'first_air_date' in mediaItem && mediaItem.first_air_date
+                    ? new Date(mediaItem.first_air_date).getFullYear()
+                    : undefined)
+              : undefined}
+            showControls={showControls}
+            onPlaybackStateChange={handlePlaybackStateChange}
           />
         </ErrorBoundary>
-        {/* Back Button - fades with controls */}
-        <div className={`absolute top-14 left-4 z-50 transition-opacity duration-300 ${
+        {/* Back Button - visible when cursor moving; stays visible when hovered (inside same wrapper) */}
+        <div className={`absolute top-14 left-4 z-50 transition-opacity duration-300 pointer-events-auto ${
           showControls ? 'opacity-100' : 'opacity-0'
         }`}>
           <button
             onClick={() => router.back()}
-            className={`pointer-events-auto transition-all duration-300 ${
+            className={`transition-all duration-300 ${
               isNoirFlix
                 ? 'font-mono text-xs border border-[#1a1a1a] px-5 py-2 hover:bg-white hover:text-black text-white/80 uppercase tracking-[2px]'
                 : 'px-4 py-2 bg-netflix-red hover:bg-red-600 rounded-lg shadow-lg shadow-netflix-red/50 hover:shadow-xl hover:shadow-netflix-red/70 hover:-translate-y-1'

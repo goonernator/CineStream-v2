@@ -32,6 +32,14 @@ interface VideoPlayerProps {
   onEnterNextEpisodeWindow?: () => void;
   mediaTitle?: string;
   episodeTitle?: string;
+  /** Short description (movie overview or episode overview for TV). Shown when paused. */
+  mediaOverview?: string;
+  /** Release year (movie release_date or show first_air_date). Shown when paused. */
+  releaseYear?: string | number;
+  /** When set, controls visibility is controlled by parent (e.g. wrapper including back button). */
+  showControlsOverride?: boolean;
+  /** Notify parent when playback state changes (for keeping controls/back button visible when paused). */
+  onPlaybackStateChange?: (isPlaying: boolean) => void;
 }
 
 // Subtitle preference key for localStorage
@@ -75,6 +83,10 @@ export default function VideoPlayer({
   onEnterNextEpisodeWindow,
   mediaTitle,
   episodeTitle,
+  mediaOverview,
+  releaseYear,
+  showControlsOverride,
+  onPlaybackStateChange,
 }: VideoPlayerProps) {
   const { layout } = useLayout();
   const isNoirFlix = layout === 'noirflix';
@@ -934,16 +946,32 @@ export default function VideoPlayer({
     }
   }, [pausedForStillWatching]);
 
+  const effectiveShowControls = showControlsOverride !== undefined ? showControlsOverride : showControls;
+
+  // Notify parent of playback state (so parent can keep controls/back button visible when paused)
+  useEffect(() => {
+    onPlaybackStateChange?.(isPlaying);
+  }, [isPlaying, onPlaybackStateChange]);
+
   // Notify parent of controls visibility changes
   useEffect(() => {
     if (onControlsVisibilityChange) {
-      onControlsVisibilityChange(showControls);
+      onControlsVisibilityChange(effectiveShowControls);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showControls]);
+  }, [effectiveShowControls]);
 
-  // Auto-hide controls
+  // When paused and uncontrolled, keep controls visible
   useEffect(() => {
+    if (showControlsOverride === undefined && !isPlaying) {
+      setShowControls(true);
+    }
+  }, [showControlsOverride, isPlaying]);
+
+  // Auto-hide controls (only when not controlled by parent)
+  useEffect(() => {
+    if (showControlsOverride !== undefined) return;
+
     const handleMouseMove = () => {
       setShowControls(true);
       if (hideControlsTimeout.current) {
@@ -972,7 +1000,7 @@ export default function VideoPlayer({
         clearTimeout(hideControlsTimeout.current);
       }
     };
-  }, [isPlaying]);
+  }, [isPlaying, showControlsOverride]);
 
   const togglePlay = () => {
     if (videoRef.current) {
@@ -1300,42 +1328,66 @@ export default function VideoPlayer({
         </div>
       )}
 
+      {/* Paused overlay: title, episode/description, release year — left-aligned with faded background */}
+      {!isPlaying && !buffering && !showStartupOverlay && (mediaTitle || mediaOverview || releaseYear != null) && (
+        <div
+          className="absolute inset-0 z-20 flex items-center pointer-events-none pt-[12%]"
+          aria-hidden
+        >
+          <div
+            className={`max-w-xl ml-8 md:ml-12 lg:ml-16 pr-8 py-6 pl-6 rounded-lg text-left ${
+              isNoirFlix ? 'text-white' : 'text-white'
+            }`}
+            style={{
+              background: 'linear-gradient(105deg, rgba(0,0,0,0.48) 0%, rgba(0,0,0,0.25) 40%, rgba(0,0,0,0.08) 70%, transparent 100%)',
+            }}
+          >
+            {mediaTitle && (
+              <h2 className={`text-2xl md:text-3xl font-bold mb-1.5 leading-tight ${
+                isNoirFlix ? 'font-mono uppercase tracking-wide' : 'drop-shadow-sm'
+              }`}>
+                {mediaTitle}
+              </h2>
+            )}
+            {(type === 'tv' && episodeTitle) || releaseYear != null ? (
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-2">
+                {type === 'tv' && episodeTitle && (
+                  <span className={`text-base md:text-lg font-semibold ${
+                    isNoirFlix ? 'font-mono text-sm uppercase tracking-wider text-white/95' : 'text-white/95'
+                  }`}>
+                    {episodeTitle}
+                  </span>
+                )}
+                {releaseYear != null && releaseYear !== '' && (
+                  <span className={`text-sm ${isNoirFlix ? 'font-mono text-white/75' : 'text-white/80'}`}>
+                    {type === 'tv' && episodeTitle ? ' · ' : ''}{String(releaseYear)}
+                  </span>
+                )}
+              </div>
+            ) : null}
+            {mediaOverview && (
+              <p className={`text-sm md:text-base leading-relaxed line-clamp-3 ${
+                isNoirFlix ? 'text-white/85' : 'text-white/90'
+              }`}>
+                {mediaOverview}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Controls Overlay */}
       <div 
         className={`absolute inset-0 transition-opacity duration-300 pointer-events-none z-30 ${
-          showControls ? 'opacity-100' : 'opacity-0'
+          effectiveShowControls ? 'opacity-100' : 'opacity-0'
         } ${
           isNoirFlix
             ? 'bg-gradient-to-t from-[#050505]/95 via-transparent to-[#050505]/50'
             : 'bg-gradient-to-t from-black/90 via-transparent to-black/50'
         }`}
       >
-        {/* Center Play Button - lower z-index so controls work */}
-        {!isPlaying && !buffering && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                togglePlay();
-              }}
-              className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110 pointer-events-auto shadow-2xl ${
-                isNoirFlix
-                  ? 'bg-white/95 hover:bg-white border border-[#1a1a1a] shadow-white/20 hover:shadow-white/40'
-                  : 'bg-netflix-red/90 hover:bg-netflix-red shadow-netflix-red/60 hover:shadow-3xl glow-red-hover'
-              }`}
-              aria-label={isPlaying ? 'Pause video' : 'Play video'}
-            >
-              <svg className={`w-10 h-10 ml-1 ${
-                isNoirFlix ? 'text-[#050505]' : 'text-white'
-              }`} viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </button>
-          </div>
-        )}
-
-        {/* Bottom Controls */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 space-y-2 pointer-events-auto">
+        {/* Bottom Controls - 25% larger */}
+        <div className="absolute bottom-0 left-0 right-0 p-5 space-y-2.5 pointer-events-auto">
           {/* Progress Bar */}
           <div className="relative group/progress cursor-pointer">
             <input
@@ -1346,11 +1398,11 @@ export default function VideoPlayer({
               onChange={handleSeek}
               onClick={(e) => e.stopPropagation()}
               aria-label="Seek video"
-              className={`w-full h-1 rounded-full appearance-none cursor-pointer
-                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 
+              className={`w-full h-1.5 rounded-full appearance-none cursor-pointer
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 
                 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:opacity-0 
                 group-hover/progress:[&::-webkit-slider-thumb]:opacity-100
-                [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-full ${
+                [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full ${
                   isNoirFlix
                     ? '[&::-webkit-slider-thumb]:bg-white'
                     : '[&::-webkit-slider-thumb]:bg-netflix-red'
@@ -1364,10 +1416,10 @@ export default function VideoPlayer({
           </div>
 
           {/* Control Buttons + media info inline */}
-          <div className={`flex items-center justify-between gap-3 ${
+          <div className={`flex items-center justify-between gap-4 ${
             isNoirFlix ? 'text-white' : 'text-white'
           }`}>
-            <div className="flex items-center space-x-4 shrink-0">
+            <div className="flex items-center space-x-5 shrink-0">
               {/* Play/Pause */}
               <button
                 onClick={(e) => {
@@ -1380,11 +1432,11 @@ export default function VideoPlayer({
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? (
-                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
+                  <svg className="w-10 h-10" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
                   </svg>
                 ) : (
-                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
+                  <svg className="w-10 h-10" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M8 5v14l11-7z" />
                   </svg>
                 )}
@@ -1400,7 +1452,7 @@ export default function VideoPlayer({
                 title="Rewind 10s"
                 aria-label="Rewind 10 seconds"
               >
-                <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                <svg className="w-9 h-9" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M11.99 5V1l-5 5 5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6h-2c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
                   <text x="12" y="16" fontSize="8" fill="currentColor" textAnchor="middle" fontWeight="bold">10</text>
                 </svg>
@@ -1416,7 +1468,7 @@ export default function VideoPlayer({
                 title="Forward 10s"
                 aria-label="Forward 10 seconds"
               >
-                <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                <svg className="w-9 h-9" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/>
                   <text x="12" y="16" fontSize="8" fill="currentColor" textAnchor="middle" fontWeight="bold">10</text>
                 </svg>
@@ -1433,15 +1485,15 @@ export default function VideoPlayer({
                   aria-label={isMuted || volume === 0 ? 'Unmute' : 'Mute'}
                 >
                   {isMuted || volume === 0 ? (
-                    <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                    <svg className="w-9 h-9" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
                     </svg>
                   ) : volume < 0.5 ? (
-                    <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                    <svg className="w-9 h-9" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M7 9v6h4l5 5V4l-5 5H7z"/>
                     </svg>
                   ) : (
-                    <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                    <svg className="w-9 h-9" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
                     </svg>
                   )}
@@ -1455,8 +1507,8 @@ export default function VideoPlayer({
                   onChange={handleVolumeChange}
                   onClick={(e) => e.stopPropagation()}
                   aria-label="Volume control"
-                  className={`w-0 group-hover/volume:w-20 transition-all h-1 rounded-full appearance-none cursor-pointer
-                    [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 
+                  className={`w-0 group-hover/volume:w-24 transition-all h-1.5 rounded-full appearance-none cursor-pointer
+                    [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 
                     [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white 
                     [&::-webkit-slider-thumb]:cursor-pointer ${
                       isNoirFlix ? 'bg-[#1a1a1a]' : 'bg-gray-600'
@@ -1465,20 +1517,20 @@ export default function VideoPlayer({
               </div>
 
               {/* Time */}
-              <div className={`text-sm font-medium ${
-                isNoirFlix ? 'font-mono text-xs' : ''
+              <div className={`text-base font-medium ${
+                isNoirFlix ? 'font-mono text-sm' : ''
               }`}>
                 {formatTime(currentTime)} / {formatTime(duration)}
               </div>
 
               {/* HDR Indicator */}
               {isPlayingHDR && (
-                <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold border ${
+                <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-sm font-semibold border ${
                   isNoirFlix
                     ? 'bg-white/10 text-white border-white/30'
                     : 'bg-netflix-red/20 text-netflix-red border-netflix-red/30'
                 }`}>
-                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18l8 4v8.64l-8 4-8-4V8.18l8-4z"/>
                     <path d="M12 8l-4 2v4l4 2 4-2v-4l-4-2zm0 2.18l2 1v1.64l-2 1-2-1v-1.64l2-1z"/>
                   </svg>
@@ -1489,7 +1541,7 @@ export default function VideoPlayer({
 
             {/* Media info - center of bar, single line */}
             {(mediaTitle || episodeTitle || (type === 'tv' && season != null && episode != null)) && (
-              <div className={`flex items-center justify-center gap-1.5 text-center pointer-events-none text-sm truncate min-w-0 flex-1 px-2 ${
+              <div className={`flex items-center justify-center gap-2 text-center pointer-events-none text-base truncate min-w-0 flex-1 px-2 ${
                 isNoirFlix ? 'text-white font-medium' : 'text-white/95'
               }`}>
                 {mediaTitle && <span>{mediaTitle}</span>}
@@ -1508,7 +1560,7 @@ export default function VideoPlayer({
               </div>
             )}
 
-            <div className="flex items-center space-x-4 shrink-0">
+            <div className="flex items-center space-x-5 shrink-0">
               {/* Subtitles/CC Button */}
               {captions.length > 0 && (
                 <div className="relative">
@@ -1528,7 +1580,7 @@ export default function VideoPlayer({
                     aria-expanded={showCaptionMenu}
                     aria-haspopup="true"
                   >
-                    <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                    <svg className="w-9 h-9" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z"/>
                     </svg>
                   </button>
@@ -1622,7 +1674,7 @@ export default function VideoPlayer({
                   aria-label="Settings"
                   aria-expanded={showSettings}
                 >
-                  <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                  <svg className="w-9 h-9" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.04.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
                   </svg>
                 </button>
@@ -1711,11 +1763,11 @@ export default function VideoPlayer({
                 aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               >
                 {isFullscreen ? (
-                  <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                  <svg className="w-9 h-9" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
                   </svg>
                 ) : (
-                  <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                  <svg className="w-9 h-9" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
                   </svg>
                 )}

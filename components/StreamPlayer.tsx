@@ -24,9 +24,13 @@ interface StreamPlayerProps {
   onEnterNextEpisodeWindow?: () => void;
   mediaTitle?: string;
   episodeTitle?: string;
+  mediaOverview?: string;
+  releaseYear?: string | number;
+  showControls?: boolean;
+  onPlaybackStateChange?: (isPlaying: boolean) => void;
 }
 
-function StreamPlayer({ sources, captions = [], type = 'movie', title, discordTitle, discordEpisodeName, mediaId, season, episode, hasNextEpisode, onNextEpisode, onControlsVisibilityChange, pausedForStillWatching = false, rating, contentRating, onEnterNextEpisodeWindow, mediaTitle, episodeTitle }: StreamPlayerProps) {
+function StreamPlayer({ sources, captions = [], type = 'movie', title, discordTitle, discordEpisodeName, mediaId, season, episode, hasNextEpisode, onNextEpisode, onControlsVisibilityChange, pausedForStillWatching = false, rating, contentRating, onEnterNextEpisodeWindow, mediaTitle, episodeTitle, mediaOverview, releaseYear, showControls, onPlaybackStateChange }: StreamPlayerProps) {
   const [currentSourceIndex, setCurrentSourceIndex] = useState(0);
   const [hasError, setHasError] = useState(false);
   const [providerHealth, setProviderHealth] = useState<Record<string, 'checking' | 'ok' | 'failed'>>({});
@@ -294,6 +298,10 @@ function StreamPlayer({ sources, captions = [], type = 'movie', title, discordTi
         onEnterNextEpisodeWindow={onEnterNextEpisodeWindow}
         mediaTitle={mediaTitle}
         episodeTitle={episodeTitle}
+        mediaOverview={mediaOverview}
+        releaseYear={releaseYear}
+        showControlsOverride={showControls}
+        onPlaybackStateChange={onPlaybackStateChange}
       />
     </div>
   );
