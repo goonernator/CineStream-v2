@@ -71,6 +71,7 @@ export default function MediaCard({
   const [isFavorited, setIsFavorited] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const hoverShowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isMovie = 'title' in item;
   const title = isMovie ? item.title : item.name;
@@ -82,11 +83,11 @@ export default function MediaCard({
     ? `${TMDB_IMAGE_BASE}/w342${item.poster_path}`
     : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="342" height="513"%3E%3Crect fill="%231a1a1a" width="342" height="513"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" fill="%23666" font-family="Arial" font-size="18"%3ENo Image%3C/text%3E%3C/svg%3E';
 
-  // Size configurations
+  // Size configurations (50% larger than original)
   const sizeConfig = {
-    small: { width: 150, height: 225, textSize: 'text-xs' },
-    default: { width: 200, height: 300, textSize: 'text-sm' },
-    large: { width: 250, height: 375, textSize: 'text-base' },
+    small: { width: 225, height: 338, textSize: 'text-xs' },
+    default: { width: 300, height: 450, textSize: 'text-sm' },
+    large: { width: 375, height: 563, textSize: 'text-base' },
   };
   
   const { width, height, textSize } = sizeConfig[size];
@@ -165,10 +166,21 @@ export default function MediaCard({
     }
   };
 
+  // Clear hover-show timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverShowTimeoutRef.current) clearTimeout(hoverShowTimeoutRef.current);
+    };
+  }, []);
+
   // Right-click to flip the card
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (hoverShowTimeoutRef.current) {
+      clearTimeout(hoverShowTimeoutRef.current);
+      hoverShowTimeoutRef.current = null;
+    }
     setIsHovered(false); // Hide hover card
     setIsFlipped(!isFlipped);
   };
@@ -274,10 +286,20 @@ export default function MediaCard({
       ref={cardRef}
       className={`relative flex-shrink-0 group/card ${className}`}
       style={{ width: `${width}px`, perspective: '1000px' }}
-      onMouseEnter={() => !isFlipped && setIsHovered(true)}
+      onMouseEnter={() => {
+        if (isFlipped) return;
+        if (hoverShowTimeoutRef.current) clearTimeout(hoverShowTimeoutRef.current);
+        hoverShowTimeoutRef.current = setTimeout(() => setIsHovered(true), 500);
+      }}
       onMouseMove={handleMouseMove}
       onMouseLeave={(e) => {
+        if (hoverShowTimeoutRef.current) {
+          clearTimeout(hoverShowTimeoutRef.current);
+          hoverShowTimeoutRef.current = null;
+        }
         const relatedTarget = e.relatedTarget;
+        // Don't close when moving to the hover card (it's portaled to body)
+        if (relatedTarget instanceof Node && (relatedTarget as Element).closest?.('[data-hover-card]')) return;
         if (cardRef.current && relatedTarget instanceof Node && !cardRef.current.contains(relatedTarget)) {
           setIsHovered(false);
         } else if (!relatedTarget) {

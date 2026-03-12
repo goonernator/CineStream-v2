@@ -158,41 +158,50 @@ export default function HoverCard({ item, onClose, parentRef, mouseX, mouseY, cl
 
   useEffect(() => {
     setMounted(true);
-    // Load trailer after delay (like reference)
-    const trailerTimer = setTimeout(() => {
-      setTrailerLoaded(true);
-    }, 800);
-
+    const trailerTimer = setTimeout(() => setTrailerLoaded(true), 500);
     return () => clearTimeout(trailerTimer);
   }, []);
 
-  // Position hover card near mouse cursor (Netflix style) - using fixed positioning
-  const cardWidth = 320;
-  const cardHeight = 380;
-  const offset = 15; // Distance from cursor
-  
-  // Calculate position - prefer right and below cursor (like reference)
-  let left = clientX + offset;
-  let top = clientY + offset;
-  
-  // Adjust if hovercard would go off screen right
-  if (left + cardWidth > window.innerWidth - 20) {
-    left = clientX - cardWidth - offset;
-  }
-  
-  // Adjust if hovercard would go off screen bottom
-  if (top + cardHeight > window.innerHeight - 20) {
-    top = clientY - cardHeight - offset;
-  }
-  
-  // Ensure not off left edge
-  if (left < 20) {
-    left = 20;
-  }
-  
-  // Ensure not off top edge
-  if (top < 20) {
-    top = 20;
+  // Close on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  // Position hover card relative to source card (50% larger than original 320×380)
+  const cardWidth = 480;
+  const cardHeight = 570;
+  const gap = 12;
+
+  let left: number;
+  let top: number;
+  if (typeof window !== 'undefined' && parentRef.current) {
+    const rect = parentRef.current.getBoundingClientRect();
+    // Prefer right of card, align top with card
+    const rightSpace = window.innerWidth - (rect.right + gap);
+    const leftSpace = rect.left - gap;
+    if (rightSpace >= cardWidth) {
+      left = rect.right + gap;
+      top = rect.top;
+    } else if (leftSpace >= cardWidth) {
+      left = rect.left - cardWidth - gap;
+      top = rect.top;
+    } else {
+      // Center horizontally below or above
+      left = Math.max(gap, Math.min(rect.left + rect.width / 2 - cardWidth / 2, window.innerWidth - cardWidth - gap));
+      top = rect.bottom + gap <= window.innerHeight - cardHeight - gap
+        ? rect.bottom + gap
+        : Math.max(gap, rect.top - cardHeight - gap);
+    }
+    // Clamp to viewport
+    left = Math.max(gap, Math.min(left, window.innerWidth - cardWidth - gap));
+    top = Math.max(gap, Math.min(top, window.innerHeight - cardHeight - gap));
+  } else {
+    left = clientX + 15;
+    top = clientY + 15;
   }
 
   const handleMouseEnter = () => {
@@ -216,6 +225,7 @@ export default function HoverCard({ item, onClose, parentRef, mouseX, mouseY, cl
   const hoverCardContent = (
     <div
       ref={hoverCardRef}
+      data-hover-card
       className="fixed bg-netflix-dark border border-netflix-gray/20 backdrop-blur-sm overflow-hidden pointer-events-auto transition-all duration-200 animate-slide-in rounded-lg"
       style={{
         width: `${cardWidth}px`,
@@ -229,7 +239,7 @@ export default function HoverCard({ item, onClose, parentRef, mouseX, mouseY, cl
       onMouseLeave={handleMouseLeave}
     >
       {/* Poster with Trailer Overlay */}
-      <div className="relative w-full bg-netflix-dark" style={{ height: '180px' }}>
+      <div className="relative w-full bg-netflix-dark" style={{ height: '270px' }}>
         {/* Static Poster */}
         {item.poster_path && (
           <Image
@@ -237,7 +247,7 @@ export default function HoverCard({ item, onClose, parentRef, mouseX, mouseY, cl
             alt={title}
             fill
             className="object-cover"
-            sizes="320px"
+            sizes="480px"
             unoptimized
           />
         )}
