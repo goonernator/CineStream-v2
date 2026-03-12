@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { useLayout } from '@/components/LayoutProvider';
 import { tmdb } from '@/lib/tmdb';
 import { TMDB_IMAGE_BASE } from '@/lib/tmdb';
 import { profiles } from '@/lib/profiles';
@@ -67,6 +68,8 @@ const filterOptions: { value: FilterType; label: string; icon: React.ReactElemen
 
 export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   const router = useRouter();
+  const { layout } = useLayout();
+  const isNoirFlix = layout === 'noirflix';
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [filter, setFilter] = useState<FilterType>('multi');
@@ -236,11 +239,19 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   const showEmptyState = query.trim().length < 2;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex flex-col">
+    <div
+      className={`fixed inset-0 z-[100] backdrop-blur-md flex flex-col ${
+        isNoirFlix ? 'bg-[#050505]/95' : 'bg-black/70'
+      }`}
+    >
       {/* Close button - top right */}
       <button
         onClick={handleClose}
-        className="absolute top-4 right-4 p-3 hover:bg-netflix-gray/20 rounded-xl transition-colors z-20"
+        className={`absolute top-4 right-4 p-3 transition-colors z-20 ${
+          isNoirFlix
+            ? 'hover:bg-white/10 border border-[#1a1a1a] text-white/80 hover:text-white'
+            : 'hover:bg-netflix-gray/20 rounded-xl'
+        }`}
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -254,7 +265,9 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
           <div className="mb-6">
             <div className="relative">
               <svg
-                className="absolute left-5 top-1/2 transform -translate-y-1/2 w-6 h-6 text-netflix-gray"
+                className={`absolute left-5 top-1/2 transform -translate-y-1/2 w-6 h-6 ${
+                  isNoirFlix ? 'text-[#888]' : 'text-netflix-gray'
+                }`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -272,12 +285,18 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search movies, TV shows, people..."
-                className="w-full pl-14 pr-14 py-5 bg-netflix-gray/15 border border-netflix-gray/30 text-black text-xl focus:outline-none focus:border-netflix-red transition-all duration-300 shadow-2xl focus:shadow-netflix-red/20 focus:ring-2 focus:ring-netflix-red/30 rounded-2xl placeholder:text-netflix-gray"
+                className={`w-full pl-14 pr-14 py-5 text-xl focus:outline-none transition-all duration-300 ${
+                  isNoirFlix
+                    ? 'bg-[#0a0a0a] border border-[#1a1a1a] text-white placeholder-[#888] focus:border-white/40 focus:ring-1 focus:ring-white/20'
+                    : 'bg-netflix-gray/15 border border-netflix-gray/30 text-black shadow-2xl focus:border-netflix-red focus:shadow-netflix-red/20 focus:ring-2 focus:ring-netflix-red/30 rounded-2xl placeholder:text-netflix-gray'
+                }`}
               />
               {query && (
                 <button
                   onClick={() => setQuery('')}
-                  className="absolute right-5 top-1/2 transform -translate-y-1/2 text-netflix-gray hover:text-netflix-light transition-colors"
+                  className={`absolute right-5 top-1/2 transform -translate-y-1/2 ${
+                    isNoirFlix ? 'text-[#888] hover:text-white' : 'text-netflix-gray hover:text-netflix-light'
+                  } transition-colors`}
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -293,10 +312,14 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
               <button
                 key={option.value}
                 onClick={() => setFilter(option.value)}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all duration-200 rounded-lg ${
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all duration-200 font-mono uppercase tracking-[1px] ${
                   filter === option.value
-                    ? 'bg-netflix-red text-white shadow-lg shadow-netflix-red/30'
-                    : 'bg-netflix-gray/15 text-netflix-light/80 hover:bg-netflix-gray/25 hover:text-netflix-light'
+                    ? isNoirFlix
+                      ? 'bg-white text-black border border-white'
+                      : 'bg-netflix-red text-white shadow-lg shadow-netflix-red/30 rounded-lg'
+                    : isNoirFlix
+                      ? 'bg-[#0a0a0a] border border-[#1a1a1a] text-white/80 hover:bg-white hover:text-black'
+                      : 'bg-netflix-gray/15 text-netflix-light/80 hover:bg-netflix-gray/25 hover:text-netflix-light rounded-lg'
                 }`}
               >
                 {option.icon}
@@ -306,10 +329,14 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
           </div>
 
           {/* Keyboard shortcut hint */}
-          <div className="text-center text-sm text-netflix-gray mb-6">
-            Press <kbd className="px-2 py-0.5 bg-netflix-gray/20 border border-netflix-gray/30 rounded text-xs mx-1">ESC</kbd> to close
+          <div
+            className={`text-center text-sm mb-6 ${
+              isNoirFlix ? 'text-[#888] font-mono text-xs uppercase tracking-[2px]' : 'text-netflix-gray'
+            }`}
+          >
+            Press <kbd className={isNoirFlix ? 'px-2 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-xs mx-1' : 'px-2 py-0.5 bg-netflix-gray/20 border border-netflix-gray/30 rounded text-xs mx-1'}>ESC</kbd> to close
             <span className="mx-2">•</span>
-            <kbd className="px-2 py-0.5 bg-netflix-gray/20 border border-netflix-gray/30 rounded text-xs mx-1">/</kbd> to search anywhere
+            <kbd className={isNoirFlix ? 'px-2 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-xs mx-1' : 'px-2 py-0.5 bg-netflix-gray/20 border border-netflix-gray/30 rounded text-xs mx-1'}>/</kbd> to search anywhere
           </div>
 
           {/* Results Content - scrollable area */}
@@ -317,7 +344,7 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
             <div className="px-1 pb-4">
           {loading ? (
             <div className="flex items-center justify-center h-64">
-              <div className="flex items-center gap-3 text-netflix-gray">
+              <div className={`flex items-center gap-3 font-mono text-xs uppercase tracking-[2px] ${isNoirFlix ? 'text-[#888]' : 'text-netflix-gray'}`}>
                 <svg className="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -331,15 +358,15 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
               {recentSearches.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-netflix-light flex items-center gap-2">
-                      <svg className="w-5 h-5 text-netflix-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <h3 className={`text-lg font-semibold flex items-center gap-2 ${isNoirFlix ? 'text-white font-mono text-xs uppercase tracking-[2px]' : 'text-netflix-light'}`}>
+                      <svg className={`w-5 h-5 ${isNoirFlix ? 'text-[#888]' : 'text-netflix-gray'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       Recent Searches
                     </h3>
                     <button
                       onClick={clearRecentSearches}
-                      className="text-sm text-netflix-gray hover:text-netflix-red transition-colors"
+                      className={`text-sm transition-colors ${isNoirFlix ? 'text-[#888] hover:text-white font-mono uppercase tracking-[1px]' : 'text-netflix-gray hover:text-netflix-red'}`}
                     >
                       Clear all
                     </button>
@@ -348,11 +375,15 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                     {recentSearches.map((search, index) => (
                       <div
                         key={index}
-                        className="group flex items-center gap-2 px-4 py-2 bg-netflix-gray/15 hover:bg-netflix-gray/25 rounded-full cursor-pointer transition-colors"
+                        className={`group flex items-center gap-2 px-4 py-2 cursor-pointer transition-colors ${
+                          isNoirFlix
+                            ? 'bg-[#0a0a0a] border border-[#1a1a1a] hover:border-white/40'
+                            : 'bg-netflix-gray/15 hover:bg-netflix-gray/25 rounded-full'
+                        }`}
                       >
                         <span
                           onClick={() => handleRecentSearchClick(search)}
-                          className="text-sm text-netflix-light/80 hover:text-netflix-light"
+                          className={`text-sm ${isNoirFlix ? 'text-white/80 hover:text-white' : 'text-netflix-light/80 hover:text-netflix-light'}`}
                         >
                           {search}
                         </span>
@@ -361,7 +392,7 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                             e.stopPropagation();
                             removeRecentSearch(search);
                           }}
-                          className="opacity-0 group-hover:opacity-100 text-netflix-gray hover:text-netflix-red transition-all"
+                          className={`opacity-0 group-hover:opacity-100 transition-all ${isNoirFlix ? 'text-[#888] hover:text-white' : 'text-netflix-gray hover:text-netflix-red'}`}
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -375,8 +406,8 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
 
               {/* Trending */}
               <div>
-                <h3 className="text-lg font-semibold text-netflix-light flex items-center gap-2 mb-4">
-                  <svg className="w-5 h-5 text-netflix-red" fill="currentColor" viewBox="0 0 24 24">
+                <h3 className={`text-lg font-semibold flex items-center gap-2 mb-4 ${isNoirFlix ? 'text-white font-mono text-xs uppercase tracking-[2px]' : 'text-netflix-light'}`}>
+                  <svg className={`w-5 h-5 ${isNoirFlix ? 'text-white' : 'text-netflix-red'}`} fill="currentColor" viewBox="0 0 24 24">
                     <path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/>
                   </svg>
                   Trending Now
@@ -385,8 +416,8 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                   <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
                     {Array.from({ length: 6 }).map((_, i) => (
                       <div key={i} className="animate-pulse">
-                        <div className="aspect-[2/3] bg-netflix-gray/20 rounded-lg" />
-                        <div className="mt-2 h-4 bg-netflix-gray/20 rounded w-3/4" />
+                        <div className={`aspect-[2/3] rounded-lg ${isNoirFlix ? 'bg-[#1a1a1a]' : 'bg-netflix-gray/20'}`} />
+                        <div className={`mt-2 h-4 rounded w-3/4 ${isNoirFlix ? 'bg-[#1a1a1a]' : 'bg-netflix-gray/20'}`} />
                       </div>
                     ))}
                   </div>
@@ -405,7 +436,7 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                           onClick={() => handleTrendingClick(item)}
                           className="cursor-pointer group"
                         >
-                          <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-netflix-gray/20">
+                          <div className={`relative aspect-[2/3] overflow-hidden rounded-lg ${isNoirFlix ? 'bg-[#1a1a1a] border border-[#1a1a1a] group-hover:border-white/40' : 'bg-netflix-gray/20'}`}>
                             {imageUrl ? (
                               <Image
                                 src={imageUrl}
@@ -416,18 +447,18 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                                 unoptimized
                               />
                             ) : (
-                              <div className="w-full h-full flex items-center justify-center text-netflix-gray">
+                              <div className={`w-full h-full flex items-center justify-center ${isNoirFlix ? 'text-[#888]' : 'text-netflix-gray'}`}>
                                 <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                 </svg>
                               </div>
                             )}
                             {/* Hover overlay */}
-                            <div className="absolute inset-0 bg-gradient-to-t from-netflix-dark/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end p-2">
-                              <span className="text-xs font-medium text-netflix-light">{isMovie ? 'Movie' : 'TV Show'}</span>
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end p-2">
+                              <span className={`text-xs font-medium ${isNoirFlix ? 'text-white font-mono uppercase' : 'text-netflix-light'}`}>{isMovie ? 'Movie' : 'TV Show'}</span>
                             </div>
                           </div>
-                          <p className="mt-2 text-sm font-medium line-clamp-1 group-hover:text-netflix-red transition-colors">
+                          <p className={`mt-2 text-sm font-medium line-clamp-1 transition-colors ${isNoirFlix ? 'text-white/80 group-hover:text-white' : 'group-hover:text-netflix-red'}`}>
                             {title}
                           </p>
                         </div>
@@ -438,19 +469,19 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
               </div>
 
               {/* Quick tips */}
-              <div className="mt-6 p-4 bg-white/5 rounded-xl border border-white/10">
-                <h4 className="text-sm font-semibold text-netflix-gray mb-2">Quick Tips</h4>
-                <ul className="text-sm text-netflix-gray/80 space-y-1">
+              <div className={`mt-6 p-4 border ${isNoirFlix ? 'bg-[#0a0a0a] border-[#1a1a1a]' : 'bg-white/5 rounded-xl border-white/10'}`}>
+                <h4 className={`text-sm font-semibold mb-2 ${isNoirFlix ? 'text-[#888] font-mono uppercase tracking-[1px]' : 'text-netflix-gray'}`}>Quick Tips</h4>
+                <ul className={`text-sm space-y-1 ${isNoirFlix ? 'text-[#888] font-mono text-xs' : 'text-netflix-gray/80'}`}>
                   <li>• Type at least 2 characters to search</li>
                   <li>• Use filters to narrow down results</li>
-                  <li>• Press <kbd className="px-1.5 py-0.5 bg-white/10 border border-white/20 rounded text-xs">/</kbd> anywhere to open search</li>
+                  <li>• Press <kbd className={isNoirFlix ? 'px-1.5 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-xs' : 'px-1.5 py-0.5 bg-white/10 border border-white/20 rounded text-xs'}>/</kbd> anywhere to open search</li>
                 </ul>
               </div>
             </div>
           ) : results.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-center">
               <svg
-                className="w-16 h-16 text-netflix-gray mb-4"
+                className={`w-16 h-16 mb-4 ${isNoirFlix ? 'text-[#888]' : 'text-netflix-gray'}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -462,13 +493,13 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                   d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <h3 className="text-2xl font-bold mb-2">No results found</h3>
-              <p className="text-netflix-gray">Try a different search term or filter</p>
+              <h3 className={`text-2xl font-bold mb-2 ${isNoirFlix ? 'text-white font-black uppercase' : ''}`}>No results found</h3>
+              <p className={isNoirFlix ? 'text-[#888] font-mono text-xs uppercase tracking-[2px]' : 'text-netflix-gray'}>Try a different search term or filter</p>
             </div>
           ) : (
             <>
               {/* Results count */}
-              <div className="mb-4 text-sm text-netflix-gray">
+              <div className={`mb-4 text-sm font-mono uppercase tracking-[1px] ${isNoirFlix ? 'text-[#888]' : 'text-netflix-gray'}`}>
                 Found {results.length} result{results.length !== 1 ? 's' : ''} for "{query}"
               </div>
               
@@ -490,7 +521,7 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                       onClick={() => handleItemClick(item)}
                       className={`group cursor-pointer ${isPerson ? 'cursor-default opacity-75' : ''}`}
                     >
-                      <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-netflix-gray/20">
+                      <div className={`relative aspect-[2/3] overflow-hidden rounded-lg ${isNoirFlix ? 'bg-[#1a1a1a] border border-[#1a1a1a] group-hover:border-white/40' : 'bg-netflix-gray/20'}`}>
                         {imageUrl ? (
                           <Image
                             src={imageUrl}
@@ -501,19 +532,19 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                             unoptimized
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center text-netflix-gray">
+                          <div className={`w-full h-full flex items-center justify-center ${isNoirFlix ? 'text-[#888]' : 'text-netflix-gray'}`}>
                             <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
                           </div>
                         )}
                         {/* Type badge */}
-                        <div className="absolute top-2 left-2 px-2 py-0.5 bg-netflix-dark/90 rounded text-xs font-medium text-netflix-light">
+                        <div className={`absolute top-2 left-2 px-2 py-0.5 text-xs font-medium ${isNoirFlix ? 'bg-[#0a0a0a]/90 border border-[#1a1a1a] text-white font-mono uppercase' : 'bg-netflix-dark/90 rounded text-netflix-light'}`}>
                           {mediaType}
                         </div>
                         {/* Rating badge */}
                         {!isPerson && item.vote_average > 0 && (
-                          <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 bg-netflix-dark/90 rounded text-xs text-netflix-light">
+                          <div className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 text-xs ${isNoirFlix ? 'bg-[#0a0a0a]/90 border border-[#1a1a1a] text-white' : 'bg-netflix-dark/90 rounded text-netflix-light'}`}>
                             <svg className="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
                               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                             </svg>
@@ -522,20 +553,20 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                         )}
                         {/* Hover play button */}
                         {!isPerson && (
-                          <div className="absolute inset-0 bg-netflix-dark/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
-                            <div className="w-12 h-12 rounded-full bg-netflix-red flex items-center justify-center shadow-lg shadow-netflix-red/30">
-                              <svg className="w-6 h-6 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isNoirFlix ? 'bg-white' : 'bg-netflix-red shadow-lg shadow-netflix-red/30'}`}>
+                              <svg className={`w-6 h-6 ml-0.5 ${isNoirFlix ? 'text-black' : 'text-white'}`} fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M8 5v14l11-7z" />
                               </svg>
                             </div>
                           </div>
                         )}
                       </div>
-                      <p className="mt-2 text-sm font-semibold line-clamp-2 group-hover:text-netflix-red transition-colors">
+                      <p className={`mt-2 text-sm font-semibold line-clamp-2 transition-colors ${isNoirFlix ? 'text-white/80 group-hover:text-white' : 'group-hover:text-netflix-red'}`}>
                         {title}
                       </p>
                       {year && (
-                        <p className="text-xs text-netflix-gray">{year}</p>
+                        <p className={`text-xs ${isNoirFlix ? 'text-[#888] font-mono' : 'text-netflix-gray'}`}>{year}</p>
                       )}
                     </div>
                   );

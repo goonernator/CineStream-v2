@@ -7,6 +7,7 @@ import { useLayout } from '@/components/LayoutProvider';
 import MediaListCard from '@/components/MediaListCard';
 import { auth } from '@/lib/auth';
 import { tmdb, TMDB_IMAGE_BASE } from '@/lib/tmdb';
+import { watchProgress } from '@/lib/watchProgress';
 import { useToast } from '@/lib/toast';
 import { logger } from '@/lib/logger';
 import type { Movie, TVShow, MediaItem } from '@/lib/types';
@@ -38,48 +39,70 @@ export default function WatchlistPage() {
 
   const loadWatchlist = async () => {
     const authState = auth.getAuthState();
-    if (!authState.isAuthenticated || !authState.accountId || !authState.sessionId) {
-      setLoading(false);
+    if (authState.isAuthenticated && authState.accountId && authState.sessionId) {
+      try {
+        const data = await tmdb.getWatchlist(authState.sessionId!, authState.accountId!);
+        setWatchlist(data);
+      } catch (error) {
+        logger.error('Failed to load watchlist:', error);
+        toast.error('Failed to load watchlist');
+      } finally {
+        setLoading(false);
+      }
       return;
     }
-
+    // Not authenticated: load from local storage
     try {
-      const data = await tmdb.getWatchlist(authState.sessionId!, authState.accountId!);
-      setWatchlist(data);
+      const items = watchProgress.getWatchlistItems();
+      if (items.length === 0) {
+        setWatchlist([]);
+        setLoading(false);
+        return;
+      }
+      const details = await Promise.all(
+        items.map(({ id, type }) =>
+          type === 'movie'
+            ? tmdb.getMovieDetails(id).then((m) => ({ ...m, media_type: 'movie' as const }))
+            : tmdb.getTVDetails(id).then((t) => ({ ...t, media_type: 'tv' as const }))
+        )
+      );
+      setWatchlist(details.filter(Boolean) as WatchlistItem[]);
     } catch (error) {
       logger.error('Failed to load watchlist:', error);
-      toast.error('Failed to load watchlist');
+      setWatchlist([]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleRemove = async (item: MediaItem) => {
-    const authState = auth.getAuthState();
-    if (!authState.isAuthenticated || !authState.accountId || !authState.sessionId) return;
-
     const isMovie = 'title' in item;
     const title = isMovie ? (item as Movie).title : (item as TVShow).name;
-
-    // Optimistic update - remove immediately from UI
     const previousWatchlist = [...watchlist];
     setWatchlist(prev => prev.filter(f => f.id !== item.id));
     toast.success(`Removed "${title}" from watchlist`);
 
-    try {
-      await tmdb.addToWatchlist(
-        authState.sessionId!,
-        authState.accountId!,
-        item.id,
-        isMovie ? 'movie' : 'tv',
-        false
-      );
-      // Success - state already updated
-    } catch (error) {
-      // Revert on error
-      logger.error('Failed to remove from watchlist:', error);
-      setWatchlist(previousWatchlist);
-      toast.error(`Failed to remove "${title}" from watchlist`);
+    const authState = auth.getAuthState();
+    if (authState.isAuthenticated && authState.accountId && authState.sessionId) {
+      try {
+        await tmdb.addToWatchlist(
+          authState.sessionId!,
+          authState.accountId!,
+          item.id,
+          isMovie ? 'movie' : 'tv',
+          false
+        );
+      } catch (error) {
+        logger.error('Failed to remove from watchlist:', error);
+        setWatchlist(previousWatchlist);
+        toast.error(`Failed to remove "${title}" from watchlist`);
+      }
+      return;
+    }
+    // Not authenticated: remove from local storage and notify
+    watchProgress.removeFromWatchlist(item.id);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sanctiontv:watchlist-updated'));
     }
   };
 
@@ -176,7 +199,7 @@ export default function WatchlistPage() {
           </div>
 
           {/* Controls */}
-          {isAuthenticated && watchlist.length > 0 && (
+          {watchlist.length > 0 && (
             <div className="flex flex-col lg:flex-row gap-4 mb-12">
               <div className="relative flex-1">
                 <input
@@ -219,10 +242,10 @@ export default function WatchlistPage() {
           {/* Content */}
           {loading ? (
             <div className="text-[#888] font-mono text-xs uppercase tracking-[2px]">LOADING...</div>
-          ) : !isAuthenticated ? (
+          ) : !isAuthenticated && watchlist.length === 0 ? (
             <div className="text-center py-24">
               <h2 className="text-3xl font-black uppercase mb-4 text-white">SIGN IN REQUIRED</h2>
-              <p className="font-mono text-xs text-[#888] uppercase tracking-[2px] mb-8">CONNECT YOUR ACCOUNT TO VIEW WATCHLIST</p>
+              <p className="font-mono text-xs text-[#888] uppercase tracking-[2px] mb-8">CONNECT YOUR ACCOUNT TO SYNC WATCHLIST — OR ADD TITLES FROM DETAILS</p>
               <button
                 onClick={() => auth.initiateLogin()}
                 className="bg-white hover:bg-white/90 text-black px-8 py-4 font-mono text-xs uppercase tracking-[2px] transition-all border border-white"
@@ -362,7 +385,7 @@ export default function WatchlistPage() {
           )}
 
           {/* Controls Bar */}
-          {isAuthenticated && watchlist.length > 0 && (
+          {watchlist.length > 0 && (
             <div className="flex flex-col lg:flex-row gap-4 mb-8">
               {/* Search */}
               <div className="relative flex-1">
@@ -444,7 +467,7 @@ export default function WatchlistPage() {
                 </div>
               ))}
             </div>
-          ) : !isAuthenticated ? (
+          ) : !isAuthenticated && watchlist.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24">
               <div className="relative mb-8">
                 <div className="w-32 h-32 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-600/20 flex items-center justify-center animate-pulse-glow" style={{ '--glow-color': 'rgba(59, 130, 246, 0.5)' } as React.CSSProperties}>
@@ -457,9 +480,9 @@ export default function WatchlistPage() {
                 <div className="absolute -bottom-1 -left-3 w-3 h-3 bg-purple-500 rounded-full animate-float" style={{ animationDelay: '0.5s' }} />
                 <div className="absolute top-1/2 -right-6 w-2 h-2 bg-indigo-500 rounded-full animate-float" style={{ animationDelay: '1s' }} />
               </div>
-              <h2 className="text-3xl font-bold text-netflix-light mb-3">Sign in to view watchlist</h2>
+              <h2 className="text-3xl font-bold text-netflix-light mb-3">Sign in to sync watchlist</h2>
               <p className="text-netflix-gray text-center max-w-md mb-8">
-                Connect your account to sync your watchlist across all your devices
+                Connect your account to sync across devices — or add titles from details to use a local list
               </p>
               <button
                 onClick={() => auth.initiateLogin()}

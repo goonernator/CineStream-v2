@@ -123,6 +123,12 @@ export default function DetailsPage() {
           } catch (error) {
             console.error('Failed to load account state:', error);
           }
+        } else if (type) {
+          // Not authenticated: read from local storage
+          const watchlistItems = watchProgress.getWatchlistItems();
+          const favoritesItems = watchProgress.getFavoritesItems();
+          setIsWatchlisted(watchlistItems.some((x) => x.id === id && x.type === type));
+          setIsFavorited(favoritesItems.some((x) => x.id === id && x.type === type));
         }
       } catch (error) {
         logger.error('Failed to load details:', error);
@@ -273,33 +279,53 @@ export default function DetailsPage() {
 
   const handleAddToWatchlist = async () => {
     const authState = auth.getAuthState();
-    if (!authState.isAuthenticated || !authState.accountId || !authState.sessionId) {
-      await auth.initiateLogin();
+    if (authState.isAuthenticated && authState.accountId && authState.sessionId) {
+      try {
+        const newState = !isWatchlisted;
+        await tmdb.addToWatchlist(authState.sessionId!, authState.accountId!, id, type!, newState);
+        setIsWatchlisted(newState);
+      } catch (error) {
+        logger.error('Failed to update watchlist:', error);
+      }
       return;
     }
-
-    try {
-      const newState = !isWatchlisted;
-      await tmdb.addToWatchlist(authState.sessionId!, authState.accountId!, id, type!, newState);
-      setIsWatchlisted(newState);
-    } catch (error) {
-      logger.error('Failed to update watchlist:', error);
+    // Not authenticated: use local storage
+    if (!type) return;
+    const newState = !isWatchlisted;
+    if (newState) {
+      watchProgress.addToWatchlist(id, type);
+    } else {
+      watchProgress.removeFromWatchlist(id);
+    }
+    setIsWatchlisted(newState);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sanctiontv:watchlist-updated'));
     }
   };
 
   const handleAddToFavorites = async () => {
     const authState = auth.getAuthState();
-    if (!authState.isAuthenticated || !authState.accountId || !authState.sessionId) {
-      await auth.initiateLogin();
+    if (authState.isAuthenticated && authState.accountId && authState.sessionId) {
+      try {
+        const newState = !isFavorited;
+        await tmdb.addToFavorites(authState.sessionId!, authState.accountId!, id, type!, newState);
+        setIsFavorited(newState);
+      } catch (error) {
+        logger.error('Failed to update favorites:', error);
+      }
       return;
     }
-
-    try {
-      const newState = !isFavorited;
-      await tmdb.addToFavorites(authState.sessionId!, authState.accountId!, id, type!, newState);
-      setIsFavorited(newState);
-    } catch (error) {
-      logger.error('Failed to update favorites:', error);
+    // Not authenticated: use local storage
+    if (!type) return;
+    const newState = !isFavorited;
+    if (newState) {
+      watchProgress.addToFavorites(id, type);
+    } else {
+      watchProgress.removeFromFavorites(id);
+    }
+    setIsFavorited(newState);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sanctiontv:favorites-updated'));
     }
   };
 

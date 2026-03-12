@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { tmdb, TMDB_IMAGE_BASE } from '@/lib/tmdb';
+import NoirFlixCard from '@/components/NoirFlixCard';
+import Carousel from '@/components/Carousel';
+import CarouselSkeleton from '@/components/CarouselSkeleton';
 import { watchProgress } from '@/lib/watchProgress';
 import { filterValidMedia } from '@/lib/mediaFilter';
 import { logger } from '@/lib/logger';
@@ -276,6 +279,16 @@ export default function NoirFlixHome() {
     'title' in featuredItem ? undefined : 1
   ) : null;
 
+  // Build progress map for Continue Watching carousel (id -> most recent progress)
+  const continueWatchingProgressMap = (() => {
+    const map = new Map<number, import('@/lib/watchProgress').WatchProgress>();
+    const items = watchProgress.getContinueWatching();
+    items.forEach((p) => {
+      if (!map.has(p.id)) map.set(p.id, p);
+    });
+    return map;
+  })();
+
   return (
     <div className="min-h-screen bg-[#050505] pt-32" style={{
       backgroundImage: 'radial-gradient(circle at 50% -20%, #111 0%, transparent 60%), linear-gradient(to bottom, transparent 0%, #000 100%)'
@@ -302,7 +315,9 @@ export default function NoirFlixHome() {
               />
               <div className="absolute bottom-0 left-0 w-full p-12 bg-gradient-to-t from-[#050505] to-transparent">
                 <span className="label font-mono text-[0.7rem] text-[#888] uppercase tracking-[4px] block mb-4">
-                  Continue Watching
+                  {continueWatching.length > 0 && featuredItem && featuredItem.id === continueWatching[0].id
+                    ? 'Continue Watching'
+                    : 'Featured'}
                 </span>
                 <h1 className="monolith-title text-6xl font-black leading-[0.9] mb-6 uppercase">
                   {'title' in featuredItem ? featuredItem.title : featuredItem.name}
@@ -426,6 +441,22 @@ export default function NoirFlixHome() {
         </div>
       </section>
 
+      {/* Continue Watching carousel */}
+      {continueWatchingLoading ? (
+        <section className="px-16 py-8">
+          <CarouselSkeleton title={true} itemCount={7} />
+        </section>
+      ) : continueWatching.length > 0 ? (
+        <section className="px-16 py-8 animate-reveal" style={{ animationDelay: '0.1s' }}>
+          <Carousel
+            title="Continue Watching"
+            items={continueWatching}
+            id="continue-watching"
+            resumeProgressMap={continueWatchingProgressMap}
+          />
+        </section>
+      ) : null}
+
       {/* Trending Section */}
       {trendingToday.length > 0 && (
         <section className="px-16 py-16 animate-reveal" style={{ animationDelay: '0.2s' }}>
@@ -436,32 +467,7 @@ export default function NoirFlixHome() {
           
           <div className="movie-grid grid grid-cols-4 gap-6">
             {trendingToday.slice(0, 12).map((item) => (
-              <div
-                key={item.id}
-                className="movie-card aspect-[2/3] bg-[#0a0a0a] relative border border-[#1a1a1a] overflow-hidden transition-all duration-500 hover:border-[rgba(255,255,255,0.4)] hover:-translate-y-2.5 cursor-pointer group"
-                onClick={() => router.push(`/details/${item.id}?type=${'title' in item ? 'movie' : 'tv'}`)}
-              >
-                <div className="w-full h-full relative">
-                  {item.poster_path ? (
-                    <Image
-                      src={`${TMDB_IMAGE_BASE}/w500${item.poster_path}`}
-                      alt={('title' in item ? item.title : item.name) || 'Media'}
-                      fill
-                      className="object-cover brightness-[0.7] transition-all duration-800 group-hover:scale-110 group-hover:brightness-100"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-[#222]"></div>
-                  )}
-                </div>
-                <div className="card-details absolute bottom-0 left-0 p-6 w-full bg-gradient-to-t from-black/90 to-transparent opacity-0 translate-y-5 transition-all duration-400 group-hover:opacity-100 group-hover:translate-y-0">
-                  <span className="label font-mono text-[0.5rem] tracking-[2px] text-[#888] block mb-2">
-                    {('title' in item ? item.release_date?.split('-')[0] : item.first_air_date?.split('-')[0]) || 'N/A'} // {item.vote_average?.toFixed(1)}
-                  </span>
-                  <h3 className="text-xl uppercase font-bold text-white">
-                    {'title' in item ? item.title : item.name}
-                  </h3>
-                </div>
-              </div>
+              <NoirFlixCard key={item.id} item={item} />
             ))}
           </div>
         </section>
@@ -477,32 +483,7 @@ export default function NoirFlixHome() {
           
           <div className="movie-grid grid grid-cols-4 gap-6">
             {recommendations.slice(0, 12).map((item) => (
-              <div
-                key={item.id}
-                className="movie-card aspect-[2/3] bg-[#0a0a0a] relative border border-[#1a1a1a] overflow-hidden transition-all duration-500 hover:border-[rgba(255,255,255,0.4)] hover:-translate-y-2.5 cursor-pointer group"
-                onClick={() => router.push(`/details/${item.id}?type=${'title' in item ? 'movie' : 'tv'}`)}
-              >
-                <div className="w-full h-full relative">
-                  {item.poster_path ? (
-                    <Image
-                      src={`${TMDB_IMAGE_BASE}/w500${item.poster_path}`}
-                      alt={('title' in item ? item.title : item.name) || 'Media'}
-                      fill
-                      className="object-cover brightness-[0.7] transition-all duration-800 group-hover:scale-110 group-hover:brightness-100"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-[#222]"></div>
-                  )}
-                </div>
-                <div className="card-details absolute bottom-0 left-0 p-6 w-full bg-gradient-to-t from-black/90 to-transparent opacity-0 translate-y-5 transition-all duration-400 group-hover:opacity-100 group-hover:translate-y-0">
-                  <span className="label font-mono text-[0.5rem] tracking-[2px] text-[#888] block mb-2">
-                    {('title' in item ? item.release_date?.split('-')[0] : item.first_air_date?.split('-')[0]) || 'N/A'} // {item.vote_average?.toFixed(1)}
-                  </span>
-                  <h3 className="text-xl uppercase font-bold text-white">
-                    {'title' in item ? item.title : item.name}
-                  </h3>
-                </div>
-              </div>
+              <NoirFlixCard key={item.id} item={item} />
             ))}
           </div>
         </section>
@@ -518,32 +499,7 @@ export default function NoirFlixHome() {
           
           <div className="movie-grid grid grid-cols-4 gap-6">
             {latestReleases.slice(0, 12).map((item) => (
-              <div
-                key={item.id}
-                className="movie-card aspect-[2/3] bg-[#0a0a0a] relative border border-[#1a1a1a] overflow-hidden transition-all duration-500 hover:border-[rgba(255,255,255,0.4)] hover:-translate-y-2.5 cursor-pointer group"
-                onClick={() => router.push(`/details/${item.id}?type=movie`)}
-              >
-                <div className="w-full h-full relative">
-                  {item.poster_path ? (
-                    <Image
-                      src={`${TMDB_IMAGE_BASE}/w500${item.poster_path}`}
-                      alt={item.title || 'Movie'}
-                      fill
-                      className="object-cover brightness-[0.7] transition-all duration-800 group-hover:scale-110 group-hover:brightness-100"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-[#222]"></div>
-                  )}
-                </div>
-                  <div className="card-details absolute bottom-0 left-0 p-6 w-full bg-gradient-to-t from-black/90 to-transparent opacity-0 translate-y-5 transition-all duration-400 group-hover:opacity-100 group-hover:translate-y-0">
-                    <span className="label font-mono text-[0.5rem] tracking-[2px] text-[#888] block mb-2">
-                      {item.release_date?.split('-')[0] || 'N/A'}
-                    </span>
-                    <h3 className="text-xl uppercase font-bold text-white">
-                      {item.title}
-                    </h3>
-                  </div>
-              </div>
+              <NoirFlixCard key={item.id} item={item} />
             ))}
           </div>
         </section>
@@ -559,30 +515,7 @@ export default function NoirFlixHome() {
           
           <div className="movie-grid grid grid-cols-4 gap-6">
             {upcomingMovies.slice(0, 12).map((item) => (
-              <div
-                key={item.id}
-                className="movie-card aspect-[2/3] bg-[#0a0a0a] relative border border-[#1a1a1a] overflow-hidden transition-all duration-500 hover:border-[rgba(255,255,255,0.4)] hover:-translate-y-2.5 cursor-pointer group"
-                onClick={() => router.push(`/details/${item.id}?type=movie`)}
-              >
-                <div className="w-full h-full relative">
-                  {item.poster_path ? (
-                    <Image
-                      src={`${TMDB_IMAGE_BASE}/w500${item.poster_path}`}
-                      alt={item.title}
-                      fill
-                      className="object-cover brightness-[0.7] transition-all duration-800 group-hover:scale-110 group-hover:brightness-100"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-[#222]"></div>
-                  )}
-                </div>
-                <div className="card-details absolute bottom-0 left-0 p-6 w-full bg-gradient-to-t from-black/90 to-transparent opacity-0 translate-y-5 transition-all duration-400 group-hover:opacity-100 group-hover:translate-y-0">
-                  <span className="label font-mono text-[0.5rem] tracking-[2px] text-[#888] block mb-2">
-                    {item.release_date?.split('-')[0]} // {item.vote_average?.toFixed(1)}
-                  </span>
-                  <h3 className="text-xl uppercase font-bold text-white">{item.title}</h3>
-                </div>
-              </div>
+              <NoirFlixCard key={item.id} item={item} />
             ))}
           </div>
         </section>
@@ -598,30 +531,7 @@ export default function NoirFlixHome() {
           
           <div className="movie-grid grid grid-cols-4 gap-6">
             {onTheAirTV.slice(0, 12).map((item) => (
-              <div
-                key={item.id}
-                className="movie-card aspect-[2/3] bg-[#0a0a0a] relative border border-[#1a1a1a] overflow-hidden transition-all duration-500 hover:border-[rgba(255,255,255,0.4)] hover:-translate-y-2.5 cursor-pointer group"
-                onClick={() => router.push(`/details/${item.id}?type=tv`)}
-              >
-                <div className="w-full h-full relative">
-                  {item.poster_path ? (
-                    <Image
-                      src={`${TMDB_IMAGE_BASE}/w500${item.poster_path}`}
-                      alt={item.name}
-                      fill
-                      className="object-cover brightness-[0.7] transition-all duration-800 group-hover:scale-110 group-hover:brightness-100"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-[#222]"></div>
-                  )}
-                </div>
-                <div className="card-details absolute bottom-0 left-0 p-6 w-full bg-gradient-to-t from-black/90 to-transparent opacity-0 translate-y-5 transition-all duration-400 group-hover:opacity-100 group-hover:translate-y-0">
-                  <span className="label font-mono text-[0.5rem] tracking-[2px] text-[#888] block mb-2">
-                    {item.first_air_date?.split('-')[0]} // {item.vote_average?.toFixed(1)}
-                  </span>
-                  <h3 className="text-xl uppercase font-bold text-white">{item.name}</h3>
-                </div>
-              </div>
+              <NoirFlixCard key={item.id} item={item} />
             ))}
           </div>
         </section>
@@ -637,30 +547,7 @@ export default function NoirFlixHome() {
           
           <div className="movie-grid grid grid-cols-4 gap-6">
             {popularTV.slice(0, 12).map((item) => (
-              <div
-                key={item.id}
-                className="movie-card aspect-[2/3] bg-[#0a0a0a] relative border border-[#1a1a1a] overflow-hidden transition-all duration-500 hover:border-[rgba(255,255,255,0.4)] hover:-translate-y-2.5 cursor-pointer group"
-                onClick={() => router.push(`/details/${item.id}?type=tv`)}
-              >
-                <div className="w-full h-full relative">
-                  {item.poster_path ? (
-                    <Image
-                      src={`${TMDB_IMAGE_BASE}/w500${item.poster_path}`}
-                      alt={item.name}
-                      fill
-                      className="object-cover brightness-[0.7] transition-all duration-800 group-hover:scale-110 group-hover:brightness-100"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-[#222]"></div>
-                  )}
-                </div>
-                <div className="card-details absolute bottom-0 left-0 p-6 w-full bg-gradient-to-t from-black/90 to-transparent opacity-0 translate-y-5 transition-all duration-400 group-hover:opacity-100 group-hover:translate-y-0">
-                  <span className="label font-mono text-[0.5rem] tracking-[2px] text-[#888] block mb-2">
-                    {item.first_air_date?.split('-')[0]} // {item.vote_average?.toFixed(1)}
-                  </span>
-                  <h3 className="text-xl uppercase font-bold text-white">{item.name}</h3>
-                </div>
-              </div>
+              <NoirFlixCard key={item.id} item={item} />
             ))}
           </div>
         </section>
@@ -676,30 +563,7 @@ export default function NoirFlixHome() {
           
           <div className="movie-grid grid grid-cols-4 gap-6">
             {topRatedTV.slice(0, 12).map((item) => (
-              <div
-                key={item.id}
-                className="movie-card aspect-[2/3] bg-[#0a0a0a] relative border border-[#1a1a1a] overflow-hidden transition-all duration-500 hover:border-[rgba(255,255,255,0.4)] hover:-translate-y-2.5 cursor-pointer group"
-                onClick={() => router.push(`/details/${item.id}?type=tv`)}
-              >
-                <div className="w-full h-full relative">
-                  {item.poster_path ? (
-                    <Image
-                      src={`${TMDB_IMAGE_BASE}/w500${item.poster_path}`}
-                      alt={item.name}
-                      fill
-                      className="object-cover brightness-[0.7] transition-all duration-800 group-hover:scale-110 group-hover:brightness-100"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-[#222]"></div>
-                  )}
-                </div>
-                <div className="card-details absolute bottom-0 left-0 p-6 w-full bg-gradient-to-t from-black/90 to-transparent opacity-0 translate-y-5 transition-all duration-400 group-hover:opacity-100 group-hover:translate-y-0">
-                  <span className="label font-mono text-[0.5rem] tracking-[2px] text-[#888] block mb-2">
-                    {item.first_air_date?.split('-')[0]} // {item.vote_average?.toFixed(1)}
-                  </span>
-                  <h3 className="text-xl uppercase font-bold text-white">{item.name}</h3>
-                </div>
-              </div>
+              <NoirFlixCard key={item.id} item={item} />
             ))}
           </div>
         </section>
@@ -715,30 +579,7 @@ export default function NoirFlixHome() {
           
           <div className="movie-grid grid grid-cols-4 gap-6">
             {popularMovies.slice(0, 12).map((item) => (
-              <div
-                key={item.id}
-                className="movie-card aspect-[2/3] bg-[#0a0a0a] relative border border-[#1a1a1a] overflow-hidden transition-all duration-500 hover:border-[rgba(255,255,255,0.4)] hover:-translate-y-2.5 cursor-pointer group"
-                onClick={() => router.push(`/details/${item.id}?type=movie`)}
-              >
-                <div className="w-full h-full relative">
-                  {item.poster_path ? (
-                    <Image
-                      src={`${TMDB_IMAGE_BASE}/w500${item.poster_path}`}
-                      alt={item.title}
-                      fill
-                      className="object-cover brightness-[0.7] transition-all duration-800 group-hover:scale-110 group-hover:brightness-100"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-[#222]"></div>
-                  )}
-                </div>
-                <div className="card-details absolute bottom-0 left-0 p-6 w-full bg-gradient-to-t from-black/90 to-transparent opacity-0 translate-y-5 transition-all duration-400 group-hover:opacity-100 group-hover:translate-y-0">
-                  <span className="label font-mono text-[0.5rem] tracking-[2px] text-[#888] block mb-2">
-                    {item.release_date?.split('-')[0]} // {item.vote_average?.toFixed(1)}
-                  </span>
-                  <h3 className="text-xl uppercase font-bold text-white">{item.title}</h3>
-                </div>
-              </div>
+              <NoirFlixCard key={item.id} item={item} />
             ))}
           </div>
         </section>
@@ -754,30 +595,7 @@ export default function NoirFlixHome() {
           
           <div className="movie-grid grid grid-cols-4 gap-6">
             {nowPlayingMovies.slice(0, 12).map((item) => (
-              <div
-                key={item.id}
-                className="movie-card aspect-[2/3] bg-[#0a0a0a] relative border border-[#1a1a1a] overflow-hidden transition-all duration-500 hover:border-[rgba(255,255,255,0.4)] hover:-translate-y-2.5 cursor-pointer group"
-                onClick={() => router.push(`/details/${item.id}?type=movie`)}
-              >
-                <div className="w-full h-full relative">
-                  {item.poster_path ? (
-                    <Image
-                      src={`${TMDB_IMAGE_BASE}/w500${item.poster_path}`}
-                      alt={item.title}
-                      fill
-                      className="object-cover brightness-[0.7] transition-all duration-800 group-hover:scale-110 group-hover:brightness-100"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-[#222]"></div>
-                  )}
-                </div>
-                <div className="card-details absolute bottom-0 left-0 p-6 w-full bg-gradient-to-t from-black/90 to-transparent opacity-0 translate-y-5 transition-all duration-400 group-hover:opacity-100 group-hover:translate-y-0">
-                  <span className="label font-mono text-[0.5rem] tracking-[2px] text-[#888] block mb-2">
-                    {item.release_date?.split('-')[0]} // {item.vote_average?.toFixed(1)}
-                  </span>
-                  <h3 className="text-xl uppercase font-bold text-white">{item.title}</h3>
-                </div>
-              </div>
+              <NoirFlixCard key={item.id} item={item} />
             ))}
           </div>
         </section>
@@ -793,30 +611,7 @@ export default function NoirFlixHome() {
           
           <div className="movie-grid grid grid-cols-4 gap-6">
             {topRatedMovies.slice(0, 12).map((item) => (
-              <div
-                key={item.id}
-                className="movie-card aspect-[2/3] bg-[#0a0a0a] relative border border-[#1a1a1a] overflow-hidden transition-all duration-500 hover:border-[rgba(255,255,255,0.4)] hover:-translate-y-2.5 cursor-pointer group"
-                onClick={() => router.push(`/details/${item.id}?type=movie`)}
-              >
-                <div className="w-full h-full relative">
-                  {item.poster_path ? (
-                    <Image
-                      src={`${TMDB_IMAGE_BASE}/w500${item.poster_path}`}
-                      alt={item.title}
-                      fill
-                      className="object-cover brightness-[0.7] transition-all duration-800 group-hover:scale-110 group-hover:brightness-100"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-[#222]"></div>
-                  )}
-                </div>
-                <div className="card-details absolute bottom-0 left-0 p-6 w-full bg-gradient-to-t from-black/90 to-transparent opacity-0 translate-y-5 transition-all duration-400 group-hover:opacity-100 group-hover:translate-y-0">
-                  <span className="label font-mono text-[0.5rem] tracking-[2px] text-[#888] block mb-2">
-                    {item.release_date?.split('-')[0]} // {item.vote_average?.toFixed(1)}
-                  </span>
-                  <h3 className="text-xl uppercase font-bold text-white">{item.title}</h3>
-                </div>
-              </div>
+              <NoirFlixCard key={item.id} item={item} />
             ))}
           </div>
         </section>

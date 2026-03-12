@@ -1,15 +1,19 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import FilterBar, { FilterState, defaultFilterState } from '@/components/FilterBar';
 import MediaGrid from '@/components/MediaGrid';
 import { BrowsePageSkeleton } from '@/components/CarouselSkeleton';
+import { useLayout } from '@/components/LayoutProvider';
 import { tmdb } from '@/lib/tmdb';
 import { filterValidMedia } from '@/lib/mediaFilter';
 import { logger } from '@/lib/logger';
 import type { Movie, Genre, DiscoverFilters } from '@/lib/types';
 
 export default function BrowseMoviesPage() {
+  const router = useRouter();
+  const { layout } = useLayout();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [filters, setFilters] = useState<FilterState>(defaultFilterState);
@@ -102,6 +106,67 @@ export default function BrowseMoviesPage() {
     }
   }, [loadingMore, page, totalPages, filters, loadMovies]);
 
+  // NoirFlix layout
+  if (layout === 'noirflix') {
+    return (
+      <div
+        className="min-h-screen bg-[#050505] pt-32 pb-16"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 50% -20%, #111 0%, transparent 60%), linear-gradient(to bottom, transparent 0%, #000 100%)',
+        }}
+      >
+        <div className="px-16">
+          <button
+            onClick={() => router.back()}
+            className="mb-8 font-mono text-xs border border-[#1a1a1a] px-5 py-2 transition-all hover:bg-white hover:text-black text-white/80"
+          >
+            ← BACK
+          </button>
+          <div className="mb-12">
+            <span className="font-mono text-[0.7rem] text-[#888] uppercase tracking-[4px] block mb-2">
+              Discover
+            </span>
+            <h1 className="text-5xl font-black uppercase mb-2 text-white">
+              Browse Movies
+            </h1>
+            <p className="font-mono text-xs text-[#888] uppercase tracking-[2px]">
+              Every genre, era, and rating
+            </p>
+          </div>
+
+          <FilterBar
+            genres={genres}
+            filters={filters}
+            onFilterChange={handleFilterChange}
+            mediaType="movie"
+            className="mb-8"
+          />
+
+          {!initialLoad && (
+            <div className="mb-6 font-mono text-xs text-[#888] uppercase tracking-[2px]">
+              Showing {movies.length} movies
+              {page < totalPages && ` // page ${page} of ${totalPages}`}
+            </div>
+          )}
+
+          {initialLoad ? (
+            <BrowsePageSkeleton />
+          ) : (
+            <MediaGrid
+              items={movies}
+              loading={loadingMore}
+              hasMore={page < totalPages}
+              onLoadMore={handleLoadMore}
+              emptyMessage="No movies found matching your filters"
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Classic layout
   return (
     <div className="min-h-screen">
       <div className="p-4 sm:p-6 lg:p-8">

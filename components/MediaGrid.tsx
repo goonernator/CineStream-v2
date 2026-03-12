@@ -2,7 +2,9 @@
 
 import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import MediaCard from './MediaCard';
+import NoirFlixCard from './NoirFlixCard';
 import { MediaCardSkeletonGrid } from './MediaCardSkeleton';
+import { useLayout } from '@/components/LayoutProvider';
 import { filterValidMedia } from '@/lib/mediaFilter';
 import type { MediaItem } from '@/lib/types';
 
@@ -39,6 +41,8 @@ export default function MediaGrid({
   className = '',
   columns = { sm: 2, md: 3, lg: 4, xl: 5, '2xl': 6 },
 }: MediaGridProps) {
+  const { layout } = useLayout();
+  const isNoirFlix = layout === 'noirflix';
   // Filter items to only show those with thumbnails and ratings
   const validItems = useMemo(() => filterValidMedia(items), [items]);
   const observerTarget = useRef<HTMLDivElement>(null);
@@ -91,7 +95,7 @@ export default function MediaGrid({
   // Show initial loading skeletons
   if (loading && validItems.length === 0) {
     return (
-      <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 ${className}`}>
+      <div className={`grid ${isNoirFlix ? 'movie-grid grid-cols-4 gap-6' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6'} ${className}`}>
         {Array.from({ length: 18 }).map((_, i) => (
           <MediaCardSkeletonGrid key={i} />
         ))}
@@ -103,28 +107,32 @@ export default function MediaGrid({
   if (!loading && validItems.length === 0) {
     return (
       <div className={`flex flex-col items-center justify-center py-20 ${className}`}>
-        <svg className="w-20 h-20 text-netflix-gray/50 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+        <svg className={`w-20 h-20 mb-4 ${isNoirFlix ? 'text-[#888]' : 'text-netflix-gray/50'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15.182 16.318A4.486 4.486 0 0012.016 15a4.486 4.486 0 00-3.198 1.318M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z" />
         </svg>
-        <p className="text-netflix-gray text-lg">{emptyMessage}</p>
+        <p className={isNoirFlix ? 'text-[#888] font-mono text-xs uppercase tracking-[2px]' : 'text-netflix-gray text-lg'}>{emptyMessage}</p>
       </div>
     );
   }
 
   return (
     <div className={className}>
-      {/* Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+      {/* Grid - NoirFlix uses same layout as home (4 cols, gap-6) */}
+      <div className={isNoirFlix ? 'movie-grid grid grid-cols-4 gap-6' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6'}>
         {validItems.map((item, index) => (
-          <div 
-            key={`${item.id}-${index}`} 
-            className="animate-scale-up"
-            style={{ animationDelay: `${Math.min(index * 0.03, 0.3)}s`, animationFillMode: 'both' }}
+          <div
+            key={`${item.id}-${index}`}
+            className={isNoirFlix ? '' : 'animate-scale-up'}
+            style={isNoirFlix ? undefined : { animationDelay: `${Math.min(index * 0.03, 0.3)}s`, animationFillMode: 'both' as const }}
           >
-            <MediaCard item={item} size="default" />
+            {isNoirFlix ? (
+              <NoirFlixCard item={item} />
+            ) : (
+              <MediaCard item={item} size="default" />
+            )}
           </div>
         ))}
-        
+
         {/* Loading skeletons at the end */}
         {loading && validItems.length > 0 && (
           <>
@@ -139,14 +147,14 @@ export default function MediaGrid({
       {hasMore && (
         <div ref={observerTarget} className="flex justify-center py-8">
           {loading ? (
-            <div className="flex items-center gap-3 text-netflix-gray">
+            <div className={`flex items-center gap-3 font-mono text-xs uppercase tracking-[2px] ${isNoirFlix ? 'text-[#888]' : 'text-netflix-gray'}`}>
               <LoadingSpinner className="w-6 h-6" />
               <span>Loading more...</span>
             </div>
           ) : (
             <button
               onClick={onLoadMore}
-              className="px-6 py-2 bg-netflix-dark border border-netflix-gray/30 hover:border-netflix-red/50 rounded-lg text-netflix-light hover:text-white transition-colors"
+              className={isNoirFlix ? 'px-6 py-2 bg-[#0a0a0a] border border-[#1a1a1a] text-white/80 hover:bg-white hover:text-black font-mono text-xs uppercase tracking-[2px] transition-all' : 'px-6 py-2 bg-netflix-dark border border-netflix-gray/30 hover:border-netflix-red/50 rounded-lg text-netflix-light hover:text-white transition-colors'}
             >
               Load More
             </button>
@@ -158,10 +166,10 @@ export default function MediaGrid({
       {showScrollTop && (
         <button
           onClick={scrollToTop}
-          className="fixed bottom-6 right-6 w-12 h-12 bg-netflix-red hover:bg-red-600 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 z-50 animate-scale-up"
+          className={`fixed bottom-6 right-6 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all duration-300 z-50 animate-scale-up ${isNoirFlix ? 'bg-white text-black hover:bg-white/90' : 'bg-netflix-red hover:bg-red-600 hover:shadow-xl text-white'}`}
           aria-label="Scroll to top"
         >
-          <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
           </svg>
         </button>

@@ -101,7 +101,7 @@ async function rateLimitedPost<T>(url: string, data?: unknown, config?: AxiosReq
         const mergedConfig = {
           ...config,
           params: {
-            api_key: TMDB_API_KEY,
+            api_key: appSettings.getTmdbApiKey(),
             ...config?.params,
           },
         };

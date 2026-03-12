@@ -374,35 +374,106 @@ export const watchProgress = {
     return mostWatched;
   },
 
-  // Get watchlist (local storage fallback - returns array of IDs)
-  getWatchlist(): number[] {
+  // Local list item shape (id + type for fetching details)
+  getWatchlistKey(): string {
+    const profileId = profiles.getActiveProfileId();
+    return profileId ? `cinestream_${profileId}_watchlist` : 'cinestream_watchlist';
+  },
+
+  getFavoritesKey(): string {
+    const profileId = profiles.getActiveProfileId();
+    return profileId ? `cinestream_${profileId}_favorites` : 'cinestream_favorites';
+  },
+
+  // Get watchlist items with type (for list pages and details page state)
+  getWatchlistItems(): { id: number; type: 'movie' | 'tv' }[] {
     if (typeof window === 'undefined') return [];
-    
     try {
-      const profileId = profiles.getActiveProfileId();
-      const key = profileId ? `cinestream_${profileId}_watchlist` : 'cinestream_watchlist';
-      const stored = localStorage.getItem(key);
+      const stored = localStorage.getItem(this.getWatchlistKey());
       if (!stored) return [];
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      if (!Array.isArray(parsed)) return [];
+      // Legacy: array of numbers -> treat as movie
+      return parsed.map((item: unknown) =>
+        typeof item === 'object' && item !== null && 'id' in item && 'type' in item
+          ? { id: (item as { id: number; type: 'movie' | 'tv' }).id, type: (item as { id: number; type: 'movie' | 'tv' }).type }
+          : { id: item as number, type: 'movie' as const }
+      );
     } catch (error) {
       logger.error('Failed to load watchlist:', error);
       return [];
     }
   },
 
-  // Get favorites (local storage fallback - returns array of IDs)
-  getFavorites(): number[] {
+  getFavoritesItems(): { id: number; type: 'movie' | 'tv' }[] {
     if (typeof window === 'undefined') return [];
-    
     try {
-      const profileId = profiles.getActiveProfileId();
-      const key = profileId ? `cinestream_${profileId}_favorites` : 'cinestream_favorites';
-      const stored = localStorage.getItem(key);
+      const stored = localStorage.getItem(this.getFavoritesKey());
       if (!stored) return [];
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((item: unknown) =>
+        typeof item === 'object' && item !== null && 'id' in item && 'type' in item
+          ? { id: (item as { id: number; type: 'movie' | 'tv' }).id, type: (item as { id: number; type: 'movie' | 'tv' }).type }
+          : { id: item as number, type: 'movie' as const }
+      );
     } catch (error) {
       logger.error('Failed to load favorites:', error);
       return [];
     }
+  },
+
+  addToWatchlist(id: number, type: 'movie' | 'tv'): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const items = this.getWatchlistItems();
+      if (items.some((x) => x.id === id)) return;
+      items.push({ id, type });
+      localStorage.setItem(this.getWatchlistKey(), JSON.stringify(items));
+    } catch (error) {
+      logger.error('Failed to add to watchlist:', error);
+    }
+  },
+
+  removeFromWatchlist(id: number): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const items = this.getWatchlistItems().filter((x) => x.id !== id);
+      localStorage.setItem(this.getWatchlistKey(), JSON.stringify(items));
+    } catch (error) {
+      logger.error('Failed to remove from watchlist:', error);
+    }
+  },
+
+  addToFavorites(id: number, type: 'movie' | 'tv'): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const items = this.getFavoritesItems();
+      if (items.some((x) => x.id === id)) return;
+      items.push({ id, type });
+      localStorage.setItem(this.getFavoritesKey(), JSON.stringify(items));
+    } catch (error) {
+      logger.error('Failed to add to favorites:', error);
+    }
+  },
+
+  removeFromFavorites(id: number): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const items = this.getFavoritesItems().filter((x) => x.id !== id);
+      localStorage.setItem(this.getFavoritesKey(), JSON.stringify(items));
+    } catch (error) {
+      logger.error('Failed to remove from favorites:', error);
+    }
+  },
+
+  // Get watchlist (local storage fallback - returns array of IDs for backward compatibility)
+  getWatchlist(): number[] {
+    return this.getWatchlistItems().map((x) => x.id);
+  },
+
+  // Get favorites (local storage fallback - returns array of IDs for backward compatibility)
+  getFavorites(): number[] {
+    return this.getFavoritesItems().map((x) => x.id);
   },
 };

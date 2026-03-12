@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Carousel from '@/components/Carousel';
 import CarouselSkeleton from '@/components/CarouselSkeleton';
+import { useLayout } from '@/components/LayoutProvider';
 import { tmdb } from '@/lib/tmdb';
 import { filterValidMedia } from '@/lib/mediaFilter';
 import { logger } from '@/lib/logger';
@@ -24,6 +26,8 @@ function getRandomPage(): number {
 }
 
 export default function AnimePage() {
+  const router = useRouter();
+  const { layout } = useLayout();
   const [carousels, setCarousels] = useState<Array<{ title: string; items: (Movie | TVShow)[]; id: string }>>([]);
   const [loading, setLoading] = useState(true);
 
@@ -132,7 +136,29 @@ export default function AnimePage() {
     loadAnimeData();
   }, []);
 
+  const isNoirFlix = layout === 'noirflix';
+
   if (loading) {
+    if (isNoirFlix) {
+      return (
+        <div
+          className="min-h-screen bg-[#050505] pt-32 pb-16"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle at 50% -20%, #111 0%, transparent 60%), linear-gradient(to bottom, transparent 0%, #000 100%)',
+          }}
+        >
+          <div className="px-16 py-8">
+            <div className="text-white/50 font-mono text-xs uppercase tracking-[4px] mb-8">Loading...</div>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className={i > 0 ? 'mt-8' : ''}>
+                <CarouselSkeleton title={true} itemCount={7} />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen">
         <div className="px-4 sm:px-6 lg:px-8 py-8">
@@ -141,6 +167,44 @@ export default function AnimePage() {
               <CarouselSkeleton title={true} itemCount={7} />
             </div>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (isNoirFlix) {
+    return (
+      <div
+        className="min-h-screen bg-[#050505] pt-32 pb-16"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 50% -20%, #111 0%, transparent 60%), linear-gradient(to bottom, transparent 0%, #000 100%)',
+        }}
+      >
+        <div className="px-16">
+          <button
+            onClick={() => router.back()}
+            className="mb-8 font-mono text-xs border border-[#1a1a1a] px-5 py-2 transition-all hover:bg-white hover:text-black text-white/80"
+          >
+            ← BACK
+          </button>
+          <div className="mb-12">
+            <span className="font-mono text-[0.7rem] text-[#888] uppercase tracking-[4px] block mb-2">
+              Animation
+            </span>
+            <h1 className="text-5xl font-black uppercase mb-2 text-white">
+              Anime
+            </h1>
+            <p className="font-mono text-xs text-[#888] uppercase tracking-[2px]">
+              TV series and movies
+            </p>
+          </div>
+          {carousels.map((carousel, index) => (
+            <div key={carousel.id} className={index > 0 ? 'mt-12' : ''}>
+              <Carousel title={carousel.title} items={carousel.items} id={carousel.id} />
+            </div>
+          ))}
+          {carousels.length > 0 && <div className="pb-12" />}
         </div>
       </div>
     );

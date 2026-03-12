@@ -4,7 +4,9 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 import type { MediaItem } from '@/lib/types';
 import type { WatchProgress } from '@/lib/watchProgress';
 import { filterValidMedia } from '@/lib/mediaFilter';
+import { useLayout } from '@/components/LayoutProvider';
 import MediaCard from './MediaCard';
+import NoirFlixCard from './NoirFlixCard';
 
 interface CarouselProps {
   title: string;
@@ -15,6 +17,8 @@ interface CarouselProps {
 }
 
 export default function Carousel({ title, items, id, resumeProgressMap }: CarouselProps) {
+  const { layout } = useLayout();
+  const isNoirFlix = layout === 'noirflix';
   // Filter items to only show those with thumbnails and ratings
   const validItems = useMemo(() => filterValidMedia(items), [items]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -143,13 +147,19 @@ export default function Carousel({ title, items, id, resumeProgressMap }: Carous
   };
 
   return (
-    <div className="mb-12" id={id}>
-      <h2 className="text-2xl font-bold mb-4">{title}</h2>
+    <div className={isNoirFlix ? 'mb-12' : 'mb-12'} id={id}>
+      <h2 className={isNoirFlix ? 'text-3xl font-black uppercase text-white mb-6 font-mono' : 'text-2xl font-bold mb-4'}>
+        {title}
+      </h2>
       <div className="relative group">
         {/* Left Arrow */}
         <button
           onClick={() => scroll('left')}
-          className="absolute left-2 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-netflix-dark/80 backdrop-blur-sm border border-netflix-gray/30 flex items-center justify-center opacity-40 group-hover:opacity-100 hover:bg-netflix-red hover:border-netflix-red hover:scale-110 transition-all duration-300 shadow-lg"
+          className={`absolute left-2 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center opacity-40 group-hover:opacity-100 transition-all duration-300 ${
+            isNoirFlix
+              ? 'bg-[#0a0a0a]/90 border border-[#1a1a1a] text-white hover:bg-white hover:text-black hover:border-white'
+              : 'bg-netflix-dark/80 backdrop-blur-sm border border-netflix-gray/30 shadow-lg hover:bg-netflix-red hover:border-netflix-red hover:scale-110'
+          }`}
           aria-label={`Scroll ${title} carousel left`}
           aria-controls={id || `carousel-${title}`}
         >
@@ -171,7 +181,11 @@ export default function Carousel({ title, items, id, resumeProgressMap }: Carous
         {/* Right Arrow */}
         <button
           onClick={() => scroll('right')}
-          className="absolute right-2 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-netflix-dark/80 backdrop-blur-sm border border-netflix-gray/30 flex items-center justify-center opacity-40 group-hover:opacity-100 hover:bg-netflix-red hover:border-netflix-red hover:scale-110 transition-all duration-300 shadow-lg"
+          className={`absolute right-2 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center opacity-40 group-hover:opacity-100 transition-all duration-300 ${
+            isNoirFlix
+              ? 'bg-[#0a0a0a]/90 border border-[#1a1a1a] text-white hover:bg-white hover:text-black hover:border-white'
+              : 'bg-netflix-dark/80 backdrop-blur-sm border border-netflix-gray/30 shadow-lg hover:bg-netflix-red hover:border-netflix-red hover:scale-110'
+          }`}
           aria-label={`Scroll ${title} carousel right`}
           aria-controls={id || `carousel-${title}`}
         >
@@ -197,9 +211,9 @@ export default function Carousel({ title, items, id, resumeProgressMap }: Carous
           role="region"
           aria-label={`${title} carousel`}
           aria-live="polite"
-          className="flex items-start gap-4 overflow-x-auto carousel-container scroll-smooth pb-4"
-          style={{ 
-            scrollbarWidth: 'none', 
+          className={`flex items-start overflow-x-auto carousel-container scroll-smooth pb-4 ${isNoirFlix ? 'gap-6' : 'gap-4'}`}
+          style={{
+            scrollbarWidth: 'none',
             msOverflowStyle: 'none',
             scrollBehavior: 'smooth',
             WebkitOverflowScrolling: 'touch',
@@ -220,12 +234,16 @@ export default function Carousel({ title, items, id, resumeProgressMap }: Carous
             <div
               key={item.id}
               ref={index === 0 ? cardRef : undefined}
-              className="flex-shrink-0 animate-fade-in"
+              className={`flex-shrink-0 animate-fade-in ${isNoirFlix ? 'w-[min(25vw,220px)]' : ''}`}
               style={{
                 animation: 'fadeIn 0.3s ease-in',
               }}
             >
-              <MediaCard item={item} progressOverride={resumeProgressMap?.get(item.id)} />
+              {isNoirFlix ? (
+                <NoirFlixCard item={item} />
+              ) : (
+                <MediaCard item={item} progressOverride={resumeProgressMap?.get(item.id)} />
+              )}
             </div>
           ))}
         </div>
