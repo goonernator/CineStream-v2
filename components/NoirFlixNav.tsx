@@ -3,11 +3,8 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { auth } from '@/lib/auth';
-import { profiles, Profile } from '@/lib/profiles';
 import SearchOverlay from './SearchOverlay';
 import LoginModal from './LoginModal';
-import ProfileDropdown from './ProfileDropdown';
 import NotificationCenter from './NotificationCenter';
 import WindowControls from './WindowControls';
 
@@ -15,8 +12,6 @@ export default function NoirFlixNav() {
   const pathname = usePathname();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [authState, setAuthState] = useState<{ isAuthenticated: boolean; username?: string | null } | null>(null);
-  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -25,8 +20,6 @@ export default function NoirFlixNav() {
 
   useEffect(() => {
     setMounted(true);
-    setAuthState(auth.getAuthState());
-    setCurrentProfile(profiles.getActiveProfile());
     
     if (typeof window !== 'undefined') {
       const savedAdultContent = localStorage.getItem('cinestream_adult_content_enabled');
@@ -43,10 +36,6 @@ export default function NoirFlixNav() {
       setSearchOpen(false);
       setLoginModalOpen(false);
     };
-    const handleProfileChange = () => {
-      setCurrentProfile(profiles.getActiveProfile());
-      setAuthState(auth.getAuthState());
-    };
     
     const handleStorageChange = () => {
       if (typeof window !== 'undefined') {
@@ -61,24 +50,16 @@ export default function NoirFlixNav() {
 
     window.addEventListener('sanctiontv:open-search', handleOpenSearch);
     window.addEventListener('sanctiontv:close-modal', handleCloseModal);
-    window.addEventListener('sanctiontv:profile-changed', handleProfileChange);
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('sanctiontv:adult-content-changed', handleAdultContentChange as EventListener);
 
     return () => {
       window.removeEventListener('sanctiontv:open-search', handleOpenSearch);
       window.removeEventListener('sanctiontv:close-modal', handleCloseModal);
-      window.removeEventListener('sanctiontv:profile-changed', handleProfileChange);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('sanctiontv:adult-content-changed', handleAdultContentChange as EventListener);
     };
   }, []);
-
-  useEffect(() => {
-    if (mounted) {
-      setAuthState(auth.getAuthState());
-    }
-  }, [pathname, mounted]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -91,18 +72,7 @@ export default function NoirFlixNav() {
   }, []);
 
   const handleLoginSuccess = () => {
-    if (mounted) {
-      setAuthState(auth.getAuthState());
-      router.refresh();
-    }
-  };
-
-  const handleLogout = () => {
-    auth.logout();
-    if (mounted) {
-      setAuthState(auth.getAuthState());
-      router.refresh();
-    }
+    if (mounted) router.refresh();
   };
 
   if (!mounted) {
@@ -244,14 +214,6 @@ export default function NoirFlixNav() {
             >
               SETTINGS
             </Link>
-            {mounted && (
-              <ProfileDropdown
-                currentProfile={currentProfile}
-                authState={authState}
-                onLogin={() => setLoginModalOpen(true)}
-                onLogout={handleLogout}
-              />
-            )}
           </div>
         </div>
       </nav>

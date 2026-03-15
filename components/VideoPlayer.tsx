@@ -156,7 +156,7 @@ export default function VideoPlayer({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const saved = Number(localStorage.getItem(AUDIO_BOOST_PREFERENCE_KEY) || '1');
-    if (saved === 1 || saved === 1.5 || saved === 2) {
+    if ([1, 2, 3, 4].includes(saved)) {
       setAudioBoost(saved);
     }
   }, []);
@@ -1034,7 +1034,7 @@ export default function VideoPlayer({
 
   const cycleAudioBoost = () => {
     void ensureAudioBoostGraph();
-    setAudioBoost((prev) => (prev === 1 ? 1.5 : prev === 1.5 ? 2 : 1));
+    setAudioBoost((prev) => (prev === 1 ? 2 : prev === 2 ? 3 : prev === 3 ? 4 : 1));
   };
 
   const toggleFullscreen = () => {
@@ -1734,7 +1734,7 @@ export default function VideoPlayer({
                           </button>
                         </div>
                       )}
-                      {/* Audio boost - click to cycle 1x -> 1.5x -> 2x */}
+                      {/* Audio boost - click to cycle 1x -> 2x -> 3x -> 4x */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1743,7 +1743,7 @@ export default function VideoPlayer({
                         className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
                           isNoirFlix ? 'text-[#ccc] hover:bg-[rgba(255,255,255,0.06)]' : 'text-gray-300 hover:bg-gray-800'
                         }`}
-                        title="Click to cycle: 1x → 1.5x → 2x"
+                        title="Click to cycle: 1x → 2x → 3x → 4x"
                       >
                         <span>Audio boost</span>
                         <span className={`tabular-nums font-medium ${isNoirFlix ? 'text-white' : 'text-white'}`}>{audioBoost}x</span>

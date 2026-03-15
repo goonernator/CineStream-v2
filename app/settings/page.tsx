@@ -1,13 +1,30 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useTheme } from '@/components/ThemeProvider';
 import { useLayout } from '@/components/LayoutProvider';
+import { useProfile } from '@/components/ProfileProvider';
 import { layouts } from '@/lib/layout';
 import { useToast } from '@/lib/toast';
 import { Theme, themes } from '@/lib/theme';
 import { watchProgress } from '@/lib/watchProgress';
 import { appSettings } from '@/lib/appSettings';
+import { auth } from '@/lib/auth';
+import LoginModal from '@/components/LoginModal';
+
+const TABS = [
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'api', label: 'API & Services' },
+  { id: 'playback', label: 'Playback' },
+  { id: 'integrations', label: 'Integrations' },
+  { id: 'subtitles', label: 'Subtitles' },
+  { id: 'content', label: 'Content' },
+  { id: 'account', label: 'Account' },
+  { id: 'data', label: 'Data' },
+  { id: 'about', label: 'About' },
+] as const;
 
 // Setting Section Component
 interface SettingSectionProps {
@@ -132,9 +149,42 @@ function ThemeCard({ theme, label, colors, isActive, onClick }: ThemeCardProps) 
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { theme, setTheme } = useTheme();
   const { layout, setLayout } = useLayout();
+  const { currentProfile, logout } = useProfile();
   const toast = useToast();
+
+  const tabParam = searchParams.get('tab');
+  const initialTab = (tabParam && TABS.some(t => t.id === tabParam)) ? tabParam : 'appearance';
+  const [activeTab, setActiveTab] = useState<string>(initialTab);
+
+  const [authState, setAuthState] = useState<{ isAuthenticated: boolean; username?: string | null } | null>(null);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+
+  useEffect(() => {
+    setAuthState(auth.getAuthState());
+    const handleProfileChange = () => setAuthState(auth.getAuthState());
+    window.addEventListener('sanctiontv:profile-changed', handleProfileChange);
+    return () => window.removeEventListener('sanctiontv:profile-changed', handleProfileChange);
+  }, [currentProfile]);
+
+  useEffect(() => {
+    const valid = TABS.some(t => t.id === tabParam);
+    if (valid && tabParam) setActiveTab(tabParam);
+  }, [tabParam]);
+
+  const handleLogout = () => {
+    logout();
+    setAuthState(auth.getAuthState());
+    toast.success('Signed out');
+  };
+
+  const handleLoginSuccess = () => {
+    setAuthState(auth.getAuthState());
+    toast.success('TMDB account linked');
+  };
 
   // Settings state
   const [autoplay, setAutoplay] = useState(true);
@@ -398,9 +448,15 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen">
+      <LoginModal
+        isOpen={loginModalOpen}
+        onClose={() => setLoginModalOpen(false)}
+        onSuccess={handleLoginSuccess}
+        forProfileId={currentProfile?.id}
+      />
       <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
         {/* Page Header */}
-        <div className="mb-8">
+        <div className="mb-6">
           <h1 className="text-4xl font-bold text-netflix-light mb-2 flex items-center gap-3">
             <svg className="w-10 h-10 text-netflix-red" viewBox="0 0 24 24" fill="currentColor">
               <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
@@ -410,7 +466,31 @@ export default function SettingsPage() {
           <p className="text-netflix-gray">Customize your SanctionTV experience</p>
         </div>
 
+        {/* Tab Bar */}
+        <div className="mb-6 overflow-x-auto">
+          <div className="flex gap-1 min-w-max pb-1">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  router.replace(`/settings${tab.id === 'appearance' ? '' : `?tab=${tab.id}`}`);
+                }}
+                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-netflix-red text-white'
+                    : 'bg-netflix-dark/50 text-netflix-gray hover:text-netflix-light hover:bg-netflix-gray/20 border border-netflix-gray/20'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="space-y-6">
+          {activeTab === 'appearance' && (
+          <>
           {/* Theme Section */}
           <SettingSection title="Appearance" description="Choose your preferred theme">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
@@ -456,8 +536,10 @@ export default function SettingsPage() {
               ))}
             </div>
           </SettingSection>
+          </>
+          )}
 
-          {/* Playback Section */}
+          {activeTab === 'api' && (
           <SettingSection title="API & Services" description="Configure API keys and base URLs. No .env file required.">
             <div className="space-y-4">
               <div>
@@ -485,7 +567,9 @@ export default function SettingsPage() {
               </div>
             </div>
           </SettingSection>
+          )}
 
+          {activeTab === 'playback' && (
           <SettingSection title="Playback" description="Control how videos play">
             <ToggleSwitch
               label="Autoplay"
@@ -513,7 +597,9 @@ export default function SettingsPage() {
               onChange={handleQualityChange}
             />
           </SettingSection>
+          )}
 
+          {activeTab === 'integrations' && (
           <SettingSection title="Discord Watching Presence" description="Publish a user-account 'Watching' status using a local discord.py-self helper (dev use only)">
             <ToggleSwitch
               label="Enable Discord self presence"
@@ -586,8 +672,9 @@ export default function SettingsPage() {
               </div>
             </div>
           </SettingSection>
+          )}
 
-          {/* Subtitles Section */}
+          {activeTab === 'subtitles' && (
           <SettingSection title="Subtitles" description="Configure subtitle preferences">
             <ToggleSwitch
               label="Enable subtitles by default"
@@ -613,8 +700,9 @@ export default function SettingsPage() {
               onChange={handleSubtitleLangChange}
             />
           </SettingSection>
+          )}
 
-          {/* Content Section */}
+          {activeTab === 'content' && (
           <SettingSection title="Content" description="Control content visibility">
             <ToggleSwitch
               label="Enable adult content"
@@ -626,8 +714,93 @@ export default function SettingsPage() {
               Enabling this option will make adult content accessible through the navigation menu. Please use responsibly.
             </p>
           </SettingSection>
+          )}
 
-          {/* Data Management Section */}
+          {activeTab === 'account' && (
+          <SettingSection title="Account" description="Manage your profile and TMDB account">
+            {currentProfile ? (
+              <div className="space-y-4">
+                {/* Profile card */}
+                <div className="flex items-center gap-4 p-4 bg-netflix-dark/50 rounded-lg border border-netflix-gray/20">
+                  <div
+                    className="w-14 h-14 rounded-lg flex items-center justify-center text-2xl shrink-0"
+                    style={{ backgroundColor: currentProfile.color }}
+                  >
+                    {currentProfile.avatar}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-netflix-light">{currentProfile.name}</p>
+                    {authState?.isAuthenticated ? (
+                      <p className="text-sm text-green-500 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-green-500" />
+                        @{authState.username}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-netflix-gray">Not linked to TMDB</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Link
+                    href="/profiles"
+                    className="flex items-center gap-3 w-full px-4 py-3 text-netflix-light hover:bg-netflix-gray/20 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M16.5 12c1.38 0 2.49-1.12 2.49-2.5S17.88 7 16.5 7C15.12 7 14 8.12 14 9.5s1.12 2.5 2.5 2.5zM9 11c1.66 0 2.99-1.34 2.99-3S10.66 5 9 5C7.34 5 6 6.34 6 8s1.34 3 3 3zm7.5 3c-1.83 0-5.5.92-5.5 2.75V19h11v-2.25c0-1.83-3.67-2.75-5.5-2.75zM9 13c-2.33 0-7 1.17-7 3.5V19h7v-2.25c0-.85.33-2.34 2.37-3.47C10.5 13.1 9.66 13 9 13z"/>
+                    </svg>
+                    Switch Profile
+                  </Link>
+                  <Link
+                    href="/profiles"
+                    className="flex items-center gap-3 w-full px-4 py-3 text-netflix-light hover:bg-netflix-gray/20 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                    Manage Profiles
+                  </Link>
+                </div>
+
+                <div className="pt-2 border-t border-netflix-gray/20">
+                  {authState?.isAuthenticated ? (
+                    <button
+                      onClick={handleLogout}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-netflix-light hover:text-netflix-red hover:bg-netflix-red/10 rounded-lg transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
+                      </svg>
+                      Sign Out
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setLoginModalOpen(true)}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-netflix-light hover:text-netflix-red hover:bg-netflix-red/10 rounded-lg transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+                      </svg>
+                      Link TMDB Account
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-netflix-gray mb-4">No profile selected</p>
+                <Link
+                  href="/profiles"
+                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-netflix-red hover:bg-red-600 text-white rounded-lg transition-colors"
+                >
+                  Select Profile
+                </Link>
+              </div>
+            )}
+          </SettingSection>
+          )}
+
+          {activeTab === 'data' && (
           <SettingSection title="Data Management" description="Manage your local data">
             <div className="flex flex-wrap gap-4">
               <button
@@ -647,8 +820,9 @@ export default function SettingsPage() {
               Clearing watch history will remove all your continue watching progress.
             </p>
           </SettingSection>
+          )}
 
-          {/* About Section */}
+          {activeTab === 'about' && (
           <SettingSection title="About">
             <div className="flex items-center gap-4">
               <div className="text-netflix-red">
@@ -663,6 +837,7 @@ export default function SettingsPage() {
               </div>
             </div>
           </SettingSection>
+          )}
         </div>
       </div>
     </div>

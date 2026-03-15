@@ -80,7 +80,7 @@ A modern Netflix-style desktop streaming application built with Electron and Nex
 
 3. **Configure API keys and URLs**
    
-   Open **Settings** in the app and go to **API & Services**. Enter your TMDB API key and Streaming API base URL (e.g. TLO V3). No `.env` file is required; all values are stored in the app.
+   Open **Settings** in the app and go to **API & Services**. Enter your TMDB API key and Streaming API base URL (e.g. https://tlo.sh/v4/api/streams). No `.env` file is required; all values are stored in the app.
 
 4. **Run in development mode**
    ```bash

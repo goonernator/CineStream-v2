@@ -8,9 +8,11 @@ interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  /** When set, links TMDB to this profile instead of creating/selecting one */
+  forProfileId?: string;
 }
 
-export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
+export default function LoginModal({ isOpen, onClose, onSuccess, forProfileId }: LoginModalProps) {
   const [status, setStatus] = useState<'idle' | 'waiting' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
@@ -26,7 +28,7 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
     }
     
     // Start auth immediately (synchronously from user click to avoid popup blockers)
-    auth.initiateLogin().catch((error) => {
+    auth.initiateLogin(forProfileId).catch((error) => {
       logger.error('Auth error:', error);
       setErrorMessage('Authentication failed. Please try again.');
       setStatus('error');

@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       'Accept-Encoding': 'identity',
       'Accept-Language': 'en-US,en;q=0.9',
       'Sec-Fetch-Dest': 'video',
-      'Sec-Fetch-Mode': 'no-cors',
+      'Sec-Fetch-Mode': 'cors',
       'Sec-Fetch-Site': 'cross-site',
     };
 
@@ -108,13 +108,18 @@ export async function GET(request: NextRequest) {
         isPlaylistUrl(decodedInnerUrl);
       const forwardedRange = !shouldTreatAsPlaylist ? headers['Range'] : undefined;
       const valhallaOrigin = 'https://proxy.valhallastream.dpdns.org';
+      const browserUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
       const valhallaHeaders: Record<string, string> = {
+        'User-Agent': browserUA,
         'Host': 'proxy.valhallastream.dpdns.org',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,/;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'identity',
         'Referer': `${valhallaOrigin}/`,
         'Origin': valhallaOrigin,
+        'Sec-Fetch-Dest': 'video',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'cross-site',
       };
       if (forwardedRange) {
         valhallaHeaders['Range'] = forwardedRange;
@@ -124,39 +129,20 @@ export async function GET(request: NextRequest) {
 
       let directHeaders: Record<string, string> | null = null;
       let directUrl: string | null = null;
-      if (innerUrl && headersParam) {
-        try {
-          const parsed = JSON.parse(headersParam) as { Referer?: string; referer?: string; Origin?: string; origin?: string };
-          directUrl = decodedInnerUrl;
-          directHeaders = {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,/;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'identity',
-          };
-          if (forwardedRange) {
-            directHeaders['Range'] = forwardedRange;
-          }
-          if (parsed?.Referer ?? parsed?.referer) directHeaders['Referer'] = (parsed.Referer ?? parsed.referer) ?? '';
-          if (parsed?.Origin ?? parsed?.origin) directHeaders['Origin'] = (parsed.Origin ?? parsed.origin) ?? '';
-        } catch {
-          try {
-            const parsed = JSON.parse(decodeURIComponent(headersParam)) as { Referer?: string; referer?: string; Origin?: string; origin?: string };
-            directUrl = decodedInnerUrl;
-            directHeaders = {
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,/;q=0.8',
-              'Accept-Language': 'en-US,en;q=0.9',
-              'Accept-Encoding': 'identity',
-            };
-            if (forwardedRange) {
-              directHeaders['Range'] = forwardedRange;
-            }
-            if (parsed?.Referer ?? parsed?.referer) directHeaders['Referer'] = (parsed.Referer ?? parsed.referer) ?? '';
-            if (parsed?.Origin ?? parsed?.origin) directHeaders['Origin'] = (parsed.Origin ?? parsed.origin) ?? '';
-          } catch {
-            directUrl = null;
-            directHeaders = null;
-          }
-        }
+      if (innerUrl) {
+        directUrl = decodedInnerUrl;
+        directHeaders = {
+          'User-Agent': browserUA,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,/;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'identity',
+          'Referer': `${valhallaOrigin}/`,
+          'Origin': valhallaOrigin,
+          'Sec-Fetch-Dest': 'video',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'cross-site',
+        };
+        if (forwardedRange) directHeaders['Range'] = forwardedRange;
       }
 
       const retryOpts = {
@@ -176,7 +162,7 @@ export async function GET(request: NextRequest) {
       };
 
       let response: Response;
-      // Prefer direct CDN when we have inner URL + headers (more reliable for range requests)
+      // Prefer direct CDN when we have inner URL + API headers (CDN expects those Referer/Origin)
       if (directUrl && directHeaders) {
         try {
           response = await fetchWithRetry(directUrl, { headers: directHeaders, redirect: 'follow' }, retryOpts);

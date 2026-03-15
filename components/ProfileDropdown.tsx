@@ -7,15 +7,11 @@ import { Profile } from '@/lib/profiles';
 interface ProfileDropdownProps {
   currentProfile: Profile | null;
   authState: { isAuthenticated: boolean; username?: string | null } | null;
-  onLogin: () => void;
-  onLogout: () => void;
 }
 
 export default function ProfileDropdown({
   currentProfile,
   authState,
-  onLogin,
-  onLogout,
 }: ProfileDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -111,60 +107,16 @@ export default function ProfileDropdown({
 
               {/* Menu Items */}
               <div className="p-2">
-                {/* Switch Profile */}
                 <Link
-                  href="/profiles"
+                  href="/settings?tab=account"
                   className="flex items-center gap-3 px-3 py-2.5 text-sm text-netflix-light/80 hover:text-netflix-light hover:bg-netflix-gray/10 rounded-lg transition-colors"
                   onClick={() => setIsOpen(false)}
                 >
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M16.5 12c1.38 0 2.49-1.12 2.49-2.5S17.88 7 16.5 7C15.12 7 14 8.12 14 9.5s1.12 2.5 2.5 2.5zM9 11c1.66 0 2.99-1.34 2.99-3S10.66 5 9 5C7.34 5 6 6.34 6 8s1.34 3 3 3zm7.5 3c-1.83 0-5.5.92-5.5 2.75V19h11v-2.25c0-1.83-3.67-2.75-5.5-2.75zM9 13c-2.33 0-7 1.17-7 3.5V19h7v-2.25c0-.85.33-2.34 2.37-3.47C10.5 13.1 9.66 13 9 13z"/>
+                    <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c1.98 0 3.6-1.62 3.6-3.6s-1.62-3.6-3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
                   </svg>
-                  Switch Profile
+                  Account settings
                 </Link>
-
-                {/* Manage Profiles */}
-                <Link
-                  href="/profiles"
-                  className="flex items-center gap-3 px-3 py-2.5 text-sm text-netflix-light/80 hover:text-netflix-light hover:bg-netflix-gray/10 rounded-lg transition-colors"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                  Manage Profiles
-                </Link>
-
-                <div className="my-2 border-t border-netflix-gray/10" />
-
-                {/* Account Section */}
-                {authState?.isAuthenticated ? (
-                  <button
-                    onClick={() => {
-                      onLogout();
-                      setIsOpen(false);
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-netflix-light/80 hover:text-netflix-red hover:bg-netflix-red/10 rounded-lg transition-colors"
-                  >
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
-                    </svg>
-                    Sign Out
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      onLogin();
-                      setIsOpen(false);
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-netflix-light/80 hover:text-netflix-red hover:bg-netflix-red/10 rounded-lg transition-colors"
-                  >
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
-                    </svg>
-                    Link TMDB Account
-                  </button>
-                )}
               </div>
             </>
           ) : (

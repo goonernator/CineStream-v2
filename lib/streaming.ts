@@ -108,7 +108,7 @@ export const streaming = {
     }
   },
 
-  // Fetch movie stream data from tlo.sh v3 API
+  // Fetch movie stream data from tlo.sh v4 API
   async getMovieStreamData(TMDB_ID: number): Promise<StreamAPIResponse | null> {
     const baseUrl = appSettings.getTloV3BaseUrl();
     const params = new URLSearchParams({ type: 'movie', tmdbId: String(TMDB_ID) });
@@ -121,7 +121,7 @@ export const streaming = {
       }
       // 503 means API is not configured
       if (response.status === 503) {
-        logger.warn('Streaming API not configured - set TLO V3 Base URL in Settings');
+        logger.warn('Streaming API not configured - set Streaming API Base URL in Settings');
         return null;
       }
       throw new Error(`Failed to fetch movie stream: ${response.statusText}`);
@@ -129,7 +129,7 @@ export const streaming = {
     return response.json();
   },
 
-  // Fetch TV show stream data from tlo.sh v3 API
+  // Fetch TV show stream data from tlo.sh v4 API
   async getTVStreamData(TMDB_ID: number, SEASON: number, EPISODE: number): Promise<StreamAPIResponse | null> {
     try {
       const baseUrl = appSettings.getTloV3BaseUrl();
@@ -143,11 +143,11 @@ export const streaming = {
         }
         // 503 means API is not configured
         if (response.status === 503) {
-          logger.warn('Streaming API not configured - set TLO V3 Base URL in Settings');
+          logger.warn('Streaming API not configured - set Streaming API Base URL in Settings');
           return null;
         }
         const errorText = await response.text();
-        logger.warn('tlo.sh v3 TV API error:', response.status, errorText);
+        logger.warn('Streaming API TV error:', response.status, errorText);
         throw new Error(`Failed to fetch TV stream: ${response.statusText}`);
       }
       const data = await response.json();
@@ -168,39 +168,28 @@ export const streaming = {
     return 'sanction';
   },
 
-  // Parse stream data and return sources (v3 and v4 API formats)
+  // Parse stream data and return sources (tlo.sh v4 API format)
   parseStreamSources(streamData: StreamAPIResponse): StreamSource[] {
     const sources: StreamSource[] = [];
     const addProxied = (url: string, quality: string, provider: StreamProvider) => {
       if (!url) return;
-      // Use Next.js proxy in both browser and Electron so streams are same-origin (avoids custom-protocol/206 issues in Electron)
-      const proxyUrl = `/api/proxy-hls?url=${encodeURIComponent(url)}`;
-      sources.push({ url: proxyUrl, type: 'direct', provider, quality });
+      // Valhalla URLs: use direct (browser fetch) - CDN blocks server-side proxy via TLS fingerprinting
+      const isValhalla = url.includes('valhallastream');
+      const srcUrl = isValhalla ? url : `/api/proxy-hls?url=${encodeURIComponent(url)}`;
+      sources.push({ url: srcUrl, type: 'direct', provider, quality });
     };
 
-    // tlo.sh v3 API format: { success: true, source: "...", sources: [{ file: "...", quality: 720, type: "hls" }, ...] }
-    if (streamData.success && Array.isArray(streamData.sources)) {
-      const allSources: { url: string; quality: number }[] = [];
-      if (streamData.source && streamData.quality !== 1080) {
-        allSources.push({ url: streamData.source, quality: streamData.quality || 720 });
-      }
-      for (const source of streamData.sources) {
-        if (source.file && source.quality !== 1080) {
-          allSources.push({ url: source.file, quality: source.quality || 720 });
-        }
-      }
-      const unique = allSources.filter((s, i, self) => self.findIndex((x) => x.url === s.url) === i);
-      unique.sort((a, b) => b.quality - a.quality);
-      for (const s of unique) {
-        addProxied(s.url, `${s.quality}p`, 'sanction');
-      }
-      return sources;
-    }
-
-    // tlo.sh v4 (and legacy) format: { streams: { "Provider": { streams: [...], quality_options: [...] } } }
+    // tlo.sh v4 format: { streams: { "Flowcast": { streams: [{ quality, url }] }, "Sanction.TV": {...} } }
+        const PREFERRED_PROVIDER_ORDER: string[] = ['Flowcast', 'flowcast', 'Hindicast', 'hindicast', 'Guru', 'guru', 'Sanction.TV', 'sanction'];
     if (streamData.streams && typeof streamData.streams === 'object' && !Array.isArray(streamData.streams)) {
       const seenUrls = new Set<string>();
-      for (const [providerName, providerData] of Object.entries(streamData.streams)) {
+      const entries = Object.entries(streamData.streams);
+      const orderKey = (name: string) => {
+        const i = PREFERRED_PROVIDER_ORDER.indexOf(name);
+        return i === -1 ? PREFERRED_PROVIDER_ORDER.length : i;
+      };
+      entries.sort((a, b) => orderKey(a[0]) - orderKey(b[0]));
+      for (const [providerName, providerData] of entries) {
         if (!providerData || typeof providerData !== 'object') continue;
         const provider = this.mapProvider(providerName);
         const rawStreams = providerData.streams as Array<{ url?: string; type?: string; quality?: number; bandwidth?: string; resolution?: string; label?: string }> | undefined;
@@ -276,7 +265,7 @@ export const streaming = {
     return captions;
   },
 
-  // Get all available stream sources for a movie (TLO v3/v4 API)
+  // Get all available stream sources for a movie (TLO v4 API)
   async getMovieStreamSourcesAsync(TMDB_ID: number, _options: StreamFetchOptions = {}): Promise<StreamResult> {
     try {
       const data = await this.getMovieStreamData(TMDB_ID);
@@ -294,7 +283,7 @@ export const streaming = {
     }
   },
 
-  // Get all available stream sources for a TV show (TLO v3/v4 API)
+  // Get all available stream sources for a TV show (TLO v4 API)
   async getTVStreamSourcesAsync(TMDB_ID: number, SEASON: number, EPISODE: number, _options: StreamFetchOptions = {}): Promise<StreamResult> {
     try {
       const data = await this.getTVStreamData(TMDB_ID, SEASON, EPISODE);

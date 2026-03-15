@@ -3,12 +3,9 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { auth } from '@/lib/auth';
-import { profiles, Profile } from '@/lib/profiles';
 import { useLayout } from './LayoutProvider';
 import SearchOverlay from './SearchOverlay';
 import LoginModal from './LoginModal';
-import ProfileDropdown from './ProfileDropdown';
 import NotificationCenter from './NotificationCenter';
 import NoirFlixNav from './NoirFlixNav';
 import WindowControls from './WindowControls';
@@ -19,8 +16,6 @@ export default function TitleBar() {
   const router = useRouter();
   const [isMaximized, setIsMaximized] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [authState, setAuthState] = useState<{ isAuthenticated: boolean; username?: string | null } | null>(null);
-  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -29,8 +24,6 @@ export default function TitleBar() {
 
   useEffect(() => {
     setMounted(true);
-    setAuthState(auth.getAuthState());
-    setCurrentProfile(profiles.getActiveProfile());
     
     // Check adult content setting
     if (typeof window !== 'undefined') {
@@ -88,10 +81,6 @@ export default function TitleBar() {
       setSearchOpen(false);
       setLoginModalOpen(false);
     };
-    const handleProfileChange = () => {
-      setCurrentProfile(profiles.getActiveProfile());
-      setAuthState(auth.getAuthState());
-    };
     
     const handleStorageChange = () => {
       if (typeof window !== 'undefined') {
@@ -106,24 +95,17 @@ export default function TitleBar() {
 
     window.addEventListener('sanctiontv:open-search', handleOpenSearch);
     window.addEventListener('sanctiontv:close-modal', handleCloseModal);
-    window.addEventListener('sanctiontv:profile-changed', handleProfileChange);
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('sanctiontv:adult-content-changed', handleAdultContentChange as EventListener);
 
     return () => {
       window.removeEventListener('sanctiontv:open-search', handleOpenSearch);
       window.removeEventListener('sanctiontv:close-modal', handleCloseModal);
-      window.removeEventListener('sanctiontv:profile-changed', handleProfileChange);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('sanctiontv:adult-content-changed', handleAdultContentChange as EventListener);
     };
   }, []);
 
-  useEffect(() => {
-    if (mounted) {
-      setAuthState(auth.getAuthState());
-    }
-  }, [pathname, mounted]);
 
   useEffect(() => {
     if (!mounted || typeof window === 'undefined') return;
@@ -165,18 +147,7 @@ export default function TitleBar() {
 
 
   const handleLoginSuccess = () => {
-    if (mounted) {
-      setAuthState(auth.getAuthState());
-      router.refresh();
-    }
-  };
-
-  const handleLogout = () => {
-    auth.logout();
-    if (mounted) {
-      setAuthState(auth.getAuthState());
-      router.refresh();
-    }
+    if (mounted) router.refresh();
   };
 
   // Don't render during SSR
@@ -483,18 +454,6 @@ export default function TitleBar() {
               <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
             </svg>
           </Link>
-
-          {/* Profile Dropdown */}
-          {mounted && (
-            <div data-tour="profile">
-              <ProfileDropdown
-                currentProfile={currentProfile}
-                authState={authState}
-                onLogin={() => setLoginModalOpen(true)}
-                onLogout={handleLogout}
-              />
-            </div>
-          )}
 
           {/* Window Controls (Electron only) */}
           {isElectron && <WindowControls />}
